@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { BRANCHES } from '../lib/data';
 
-const ROLES = [
+const ALL_ROLES = [
   { value: 'admin', label: 'Network Director (Full Access)' },
   { value: 'hod', label: 'Head of Department (Branch Access)' },
   { value: 'staff', label: 'RT Staff (Limited Access)' },
@@ -16,23 +16,30 @@ const BRANCH_OPTIONS = [
 const EMPTY = { full_name: '', email: '', password: '', role: 'staff', branch_id: 'jeddah', active: true };
 
 export default function AdminPanel({ user }) {
+  const isAdmin = user.isAdmin;
+  const ROLES = isAdmin ? ALL_ROLES : ALL_ROLES.filter(r => r.value === 'staff');
+  const branchDefault = isAdmin ? 'jeddah' : user.branchId;
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState({ ...EMPTY, branch_id: branchDefault });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
   const load = async () => {
     setLoading(true);
     const r = await fetch('/api/admin/users');
-    if (r.ok) setUsers(await r.json());
+    if (r.ok) {
+      const all = await r.json();
+      setUsers(isAdmin ? all : all.filter(u => u.branch_id === user.branchId));
+    }
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => { setForm(EMPTY); setErr(''); setModal('add'); };
+  const openAdd = () => { setForm({ ...EMPTY, branch_id: branchDefault, role: isAdmin ? 'staff' : 'staff' }); setErr(''); setModal('add'); };
   const openEdit = (u) => { setForm({ ...u, password: '' }); setErr(''); setModal(u); };
 
   const save = async () => {
@@ -72,10 +79,10 @@ export default function AdminPanel({ user }) {
       <div className="ph">
         <div className="ph-row">
           <div>
-            <div className="pt">Admin Panel</div>
-            <div className="ps">User accounts · access control · login credentials</div>
+            <div className="pt">{isAdmin ? 'Admin Panel' : 'Staff Management'}</div>
+            <div className="ps">{isAdmin ? 'User accounts · access control · login credentials' : `Branch staff accounts · ${BRANCHES.find(b => b.id === user.branchId)?.full || user.branchId}`}</div>
           </div>
-          <button className="btn" onClick={openAdd}>+ Add User</button>
+          <button className="btn" onClick={openAdd}>+ Add Staff</button>
         </div>
       </div>
 
@@ -127,7 +134,7 @@ export default function AdminPanel({ user }) {
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button className="btn" onClick={() => openEdit(u)}
                             style={{ fontSize: 10, padding: '3px 10px' }}>Edit</button>
-                          {u.id !== user.id && (
+                          {u.id !== user.id && (isAdmin || u.role === 'staff') && (
                             <button onClick={() => del(u.id, u.full_name)}
                               style={{ fontSize: 10, padding: '3px 10px', background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--sora)' }}>
                               Remove
@@ -196,9 +203,13 @@ export default function AdminPanel({ user }) {
 
             <div className="ig" style={{ marginBottom: 14 }}>
               <label className="inplbl">Branch Assignment</label>
-              <select className="inpf" value={form.branch_id} onChange={e => setForm(p => ({ ...p, branch_id: e.target.value }))}>
-                {BRANCH_OPTIONS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
+              {isAdmin ? (
+                <select className="inpf" value={form.branch_id} onChange={e => setForm(p => ({ ...p, branch_id: e.target.value }))}>
+                  {BRANCH_OPTIONS.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              ) : (
+                <input className="inpf" type="text" value={BRANCHES.find(b => b.id === user.branchId)?.full || user.branchId} readOnly style={{ opacity: 0.7 }} />
+              )}
             </div>
 
             {modal !== 'add' && (

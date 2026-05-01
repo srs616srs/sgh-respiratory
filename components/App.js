@@ -100,7 +100,7 @@ export default function App() {
     { id: 'coverage',  ico: '🏥', label: 'Areas of Coverage' },
     { id: 'workload',  ico: '📊', label: 'Workload Management' },
     { id: 'logistics', ico: '🔧', label: 'Logistics' },
-    ...(user.isAdmin ? [{ id: 'admin', ico: '⚙️', label: 'Admin Panel' }] : []),
+    ...(user.isHOD ? [{ id: 'admin', ico: '⚙️', label: user.isAdmin ? 'Admin Panel' : 'Staff Management' }] : []),
   ];
 
   const sh = {
