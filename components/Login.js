@@ -6,11 +6,37 @@ export default function Login({ onLogin }) {
   const [email, setEmail] = useState('sultanalshehri@sghgroup.net');
   const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const go = () => {
-    const s = STAFF.find(st => st.email.toLowerCase() === email.toLowerCase().trim());
-    if (s) onLogin(s);
-    else setErr('No SGH account found for this email.');
+  const go = async () => {
+    if (!email.trim()) { setErr('Please enter your email.'); return; }
+    setLoading(true);
+    setErr('');
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password: pass }),
+      });
+      if (r.ok) {
+        onLogin(await r.json());
+        return;
+      }
+      const result = await r.json();
+      if (r.status === 503) {
+        // Supabase not configured — fall back to demo mode
+        const s = STAFF.find(st => st.email.toLowerCase() === email.toLowerCase().trim());
+        if (s) { onLogin(s); return; }
+      }
+      setErr(result.error || 'Sign in failed.');
+    } catch {
+      // Network error — demo fallback
+      const s = STAFF.find(st => st.email.toLowerCase() === email.toLowerCase().trim());
+      if (s) { onLogin(s); return; }
+      setErr('Unable to connect. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -20,7 +46,7 @@ export default function Login({ onLogin }) {
         <div style={{ textAlign: 'center', fontSize: 34, marginBottom: 10 }}>🫁</div>
         <div className="ll">SAUDI GERMAN HOSPITAL · MEAHCO NETWORK</div>
         <div className="lt">Respiratory Services</div>
-        <div className="lsub">Sign in with your @sghgroup.net email</div>
+        <div className="lsub">Sign in with your @sghgroup.net account</div>
         <div className="ig">
           <label className="inplbl">Email Address</label>
           <input className="inpf" type="email" value={email}
@@ -31,18 +57,17 @@ export default function Login({ onLogin }) {
         <div className="ig">
           <label className="inplbl">Password</label>
           <input className="inpf" type="password" value={pass}
-            onChange={e => setPass(e.target.value)}
+            onChange={e => { setPass(e.target.value); setErr(''); }}
             onKeyDown={e => e.key === 'Enter' && go()}
             placeholder="••••••••" />
         </div>
         {err && <div className="err">⚠ {err}</div>}
-        <button className="lbtn" onClick={go}>Sign In →</button>
+        <button className="lbtn" onClick={go} disabled={loading}>
+          {loading ? 'Signing in...' : 'Sign In →'}
+        </button>
         <div className="lhint">
-          <strong style={{ display: 'block', marginBottom: 4, color: 'var(--t2)' }}>Demo Accounts (8 Branches)</strong>
-          Network Director: sultanalshehri@sghgroup.net<br />
-          Jeddah: ahmad.zahrani@sghgroup.net<br />
-          Riyadh: khalid.dosari@sghgroup.net · Makkah: yasser.ghamdi@sghgroup.net<br />
-          Hai Aljamea: bader.harbi@sghgroup.net
+          <strong style={{ display: 'block', marginBottom: 4, color: 'var(--t2)' }}>Network Admin Login</strong>
+          sultanalshehri@sghgroup.net · password: Admin@SGH2025
         </div>
       </div>
     </div>

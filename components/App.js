@@ -17,6 +17,7 @@ import StaffManagement from './StaffManagement';
 import AreasCoverage from './AreasCoverage';
 import WorkloadMgmt from './WorkloadMgmt';
 import LogisticsMgmt from './LogisticsMgmt';
+import AdminPanel from './AdminPanel';
 
 function BranchTag({ br }) {
   if (!br) return null;
@@ -99,6 +100,7 @@ export default function App() {
     { id: 'coverage',  ico: '🏥', label: 'Areas of Coverage' },
     { id: 'workload',  ico: '📊', label: 'Workload Management' },
     { id: 'logistics', ico: '🔧', label: 'Logistics' },
+    ...(user.isAdmin ? [{ id: 'admin', ico: '⚙️', label: 'Admin Panel' }] : []),
   ];
 
   const sh = {
@@ -174,6 +176,7 @@ export default function App() {
         {view === 'coverage'     && <AreasCoverage   {...sh} />}
         {view === 'workload'     && <WorkloadMgmt    {...sh} />}
         {view === 'logistics'    && <LogisticsMgmt   {...sh} />}
+        {view === 'admin'        && <AdminPanel user={user} />}
       </main>
     </div>
   );
