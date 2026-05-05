@@ -13,9 +13,9 @@ const BRANCH_OPTIONS = [
   ...BRANCHES.map(b => ({ id: b.id, name: b.full })),
 ];
 
-const EMPTY = { full_name: '', email: '', password: '', role: 'staff', branch_id: 'jeddah', active: true };
+const EMPTY = { full_name: '', email: '', role: 'staff', branch_id: 'jeddah', active: true };
 
-export default function AdminPanel({ user }) {
+export default function AdminPanel({ user, onStaffChange }) {
   const isAdmin = user.isAdmin;
   const ROLES = isAdmin ? ALL_ROLES : ALL_ROLES.filter(r => r.value === 'staff');
   const branchDefault = isAdmin ? 'jeddah' : user.branchId;
@@ -35,6 +35,7 @@ export default function AdminPanel({ user }) {
       setUsers(isAdmin ? all : all.filter(u => u.branch_id === user.branchId));
     }
     setLoading(false);
+    if (onStaffChange) onStaffChange();
   };
 
   useEffect(() => { load(); }, []);
@@ -44,7 +45,6 @@ export default function AdminPanel({ user }) {
 
   const save = async () => {
     if (!form.full_name || !form.email) { setErr('Name and email are required.'); return; }
-    if (modal === 'add' && !form.password) { setErr('Password is required for new users.'); return; }
     setSaving(true);
     setErr('');
     const method = modal === 'add' ? 'POST' : 'PUT';
@@ -186,13 +186,17 @@ export default function AdminPanel({ user }) {
                 onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
             </div>
 
-            <div className="ig" style={{ marginBottom: 10 }}>
-              <label className="inplbl">
-                {modal === 'add' ? 'Password' : 'New Password (leave blank to keep current)'}
-              </label>
-              <input className="inpf" type="password" value={form.password} placeholder="••••••••"
-                onChange={e => setForm(p => ({ ...p, password: e.target.value }))} />
-            </div>
+            {modal === 'add' ? (
+              <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '10px 14px', marginBottom: 10, fontSize: 10.5, color: '#166534' }}>
+                🔒 Default password: <strong>123456</strong> — user will be required to change it on first login.
+              </div>
+            ) : (
+              <div className="ig" style={{ marginBottom: 10 }}>
+                <label className="inplbl">New Password (leave blank to keep current)</label>
+                <input className="inpf" type="password" value={form.password || ''} placeholder="Leave blank to keep current"
+                  onChange={e => setForm(p => ({ ...p, password: e.target.value }))} />
+              </div>
+            )}
 
             <div className="ig" style={{ marginBottom: 10 }}>
               <label className="inplbl">Role & Access Level</label>

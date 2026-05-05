@@ -1,29 +1,53 @@
 'use client';
-import { useState } from 'react';
-import { getBranch, getStaff } from '../lib/data';
+import { useState, useRef } from 'react';
+import { getBranch } from '../lib/data';
 import { BranchTag } from './App';
 
-export default function Meetings({ meetings, setMeetings, user, selBr, activeBranch }) {
+export default function Meetings({ meetings, setMeetings, user, selBr, activeBranch, staff }) {
   const [viewMOM, setViewMOM] = useState(null);
   const [showAI, setShowAI] = useState(false);
+  const [uploadingMOM, setUploadingMOM] = useState(false);
+  const momFileRef = useRef();
   const vis = meetings.filter(m => selBr === 'all' || m.branchId === 'all' || m.branchId === selBr);
+
+  const getStaffById = (id) => staff?.find(s => s.id === id);
 
   const sign = (mid) => setMeetings(p => p.map(m =>
     m.id !== mid || m.signatures.includes(user.id) ? m : { ...m, signatures: [...m.signatures, user.id] }
   ));
-  const saveMOM = (mom, title) => {
+
+  const saveMOM = (mom, title, fileUrl, fileName) => {
     setMeetings(p => [{
       id: Date.now(), title, date: new Date().toISOString().split('T')[0],
       time: '—', attendees: [], branchId: selBr === 'all' ? 'all' : selBr, mom, signatures: [],
+      fileUrl: fileUrl || null, fileName: fileName || null,
     }, ...p]);
     setShowAI(false);
+  };
+
+  const uploadMOMFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingMOM(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('folder', 'meetings');
+      const res = await fetch('/api/upload', { method: 'POST', body: form });
+      const json = await res.json();
+      if (json.url) {
+        const title = file.name.replace(/\.[^.]+$/, '');
+        saveMOM('(PDF document — see attached file)', title, json.url, file.name);
+      }
+    } catch { /* ignore */ }
+    setUploadingMOM(false);
   };
 
   return (
     <>
       <div className="ph">
         <div className="ph-row">
-          <div><div className="pt">Meetings & Minutes</div><div className="ps">AI-generated MOM · digital signatures · branch & network</div></div>
+          <div><div className="pt">Meetings & Minutes</div><div className="ps">AI-generated MOM · PDF upload · digital signatures</div></div>
           <BranchTag br={selBr === 'all' ? { full: 'All Branches', color: '#0096b4' } : activeBranch} />
         </div>
       </div>
@@ -31,8 +55,15 @@ export default function Meetings({ meetings, setMeetings, user, selBr, activeBra
         <div className="tb">
           <span style={{ fontSize: 11.5, color: 'var(--t2)' }}>{vis.length} meetings</span>
           <div className="tbs" />
+          {user.isHOD && (
+            <>
+              <input type="file" ref={momFileRef} style={{ display: 'none' }} accept=".pdf,.doc,.docx" onChange={uploadMOMFile} />
+              <button className="btn out" onClick={() => momFileRef.current?.click()} disabled={uploadingMOM}>
+                {uploadingMOM ? '⏳ Uploading…' : '📎 Upload MOM PDF'}
+              </button>
+            </>
+          )}
           <button className="btn pri" onClick={() => setShowAI(true)}>🤖 AI Generate MOM</button>
-          {user.isHOD && <button className="btn out">+ Schedule</button>}
         </div>
 
         {vis.map(m => {
@@ -46,11 +77,14 @@ export default function Meetings({ meetings, setMeetings, user, selBr, activeBra
                     {brInfo
                       ? <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: brInfo.color + '20', color: brInfo.color, fontWeight: 600, border: `1px solid ${brInfo.color}44` }}>{brInfo.name}</span>
                       : <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: '#e0f2fe', color: '#075985', fontWeight: 600 }}>🌐 Network</span>}
+                    {m.fileUrl && <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>📎 PDF</span>}
                   </div>
                   <div className="md">📅 {m.date} · ⏰ {m.time} · {m.attendees.length} attendees</div>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <button className="btn out sm" onClick={() => setViewMOM(m)}>📄 MOM</button>
+                  {m.fileUrl
+                    ? <a href={m.fileUrl} target="_blank" rel="noreferrer" className="btn out sm" style={{ textDecoration: 'none' }}>⬇ Download</a>
+                    : <button className="btn out sm" onClick={() => setViewMOM(m)}>📄 MOM</button>}
                   {!m.signatures.includes(user.id)
                     ? <button className="btn pri sm" onClick={() => sign(m.id)}>✍️ Sign</button>
                     : <span className="b valid">✓ Signed</span>}
@@ -60,13 +94,18 @@ export default function Meetings({ meetings, setMeetings, user, selBr, activeBra
                 <div>
                   <div style={{ fontSize: 8.5, color: 'var(--t3)', fontWeight: 600, marginBottom: 4 }}>SIGNED:</div>
                   <div className="scg">
-                    {m.signatures.map(id => { const s = getStaff(id); return s ? <div key={id} className="sch">✓ {s.name}</div> : null; })}
+                    {m.signatures.map(id => {
+                      const s = getStaffById(id);
+                      const name = s?.name || (user.id === id ? user.name : `User ${id}`);
+                      return <div key={id} className="sch">✓ {name}</div>;
+                    })}
                   </div>
                 </div>
               )}
             </div>
           );
         })}
+        {vis.length === 0 && <div className="es"><div className="es-ico">💬</div>No meetings recorded yet</div>}
 
         {viewMOM && (
           <div className="ov" onClick={() => setViewMOM(null)}>

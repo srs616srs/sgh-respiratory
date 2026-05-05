@@ -35,6 +35,7 @@ export async function POST(req) {
       isHOD: data.role === 'admin' || data.role === 'hod',
       isAdmin: data.role === 'admin',
       avatar: initials,
+      forcePasswordChange: data.force_password_change || false,
     });
   } catch (e) {
     return Response.json({ error: 'Server error: ' + e.message }, { status: 500 });

@@ -1,10 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
 import {
-  BRANCHES, STAFF, staffOf, getBranch, certStatus, daysUntil,
+  BRANCHES, getBranch, certStatus, daysUntil,
   INIT_CERTS, INIT_DOCS, INIT_COMP, INIT_COURSES, INIT_MEETINGS,
   INIT_STAFF_META, INIT_VACATIONS, INIT_FOLDERS,
   INIT_COVERAGE, INIT_WORKLOAD, INIT_LOGISTICS,
+  INIT_SCHEDULES, INIT_TRAINING_REQUESTS, INIT_DOC_ACKS, INIT_LOGISTICS_TYPES,
 } from '../lib/data';
 import Login from './Login';
 import Dashboard from './Dashboard';
@@ -50,27 +51,79 @@ export default function App() {
   const [coverage, setCoverage] = useState(INIT_COVERAGE);
   const [workload, setWorkload] = useState(INIT_WORKLOAD);
   const [logistics, setLogistics] = useState(INIT_LOGISTICS);
+  // New state
+  const [staff, setStaff] = useState([]);
+  const [schedules, setSchedules] = useState(INIT_SCHEDULES);
+  const [trainingRequests, setTrainingRequests] = useState(INIT_TRAINING_REQUESTS);
+  const [docAcks, setDocAcks] = useState(INIT_DOC_ACKS);
+  const [logisticsTypes, setLogisticsTypes] = useState(INIT_LOGISTICS_TYPES);
+  // UI state
+  const [showChangePwd, setShowChangePwd] = useState(false);
+  const [forceChangePwd, setForceChangePwd] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1800);
     return () => clearTimeout(t);
   }, []);
 
-  const login = (u) => { setUser(u); setSelBr(u.isHOD ? 'all' : u.branchId); };
-  const logout = () => { setUser(null); setView('dashboard'); setSelBr('all'); };
+  // Load staff from DB after login
+  const loadStaff = async () => {
+    try {
+      const r = await fetch('/api/admin/users');
+      if (r.ok) {
+        const all = await r.json();
+        // Map DB users to staff format
+        const mapped = all.filter(u => u.active).map(u => ({
+          id: u.id,
+          name: u.full_name,
+          email: u.email,
+          role: u.role === 'admin' ? 'Network Director' : u.role === 'hod' ? 'Head of Department' : 'RT Staff',
+          branchId: u.branch_id,
+          isHOD: u.role === 'admin' || u.role === 'hod',
+          isAdmin: u.role === 'admin',
+          avatar: u.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
+        }));
+        setStaff(mapped);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const login = (u) => {
+    setUser(u);
+    setSelBr(u.isHOD ? 'all' : u.branchId);
+    loadStaff();
+    if (u.forcePasswordChange) {
+      setForceChangePwd(true);
+      setShowChangePwd(true);
+    }
+  };
+
+  const logout = () => {
+    setUser(null);
+    setView('dashboard');
+    setSelBr('all');
+    setStaff([]);
+    setShowChangePwd(false);
+    setForceChangePwd(false);
+  };
 
   const expiring = certs.filter(c => {
-    const s = STAFF.find(st => st.id === c.staffId);
+    const s = staff.find(st => st.id === c.staffId);
     return (selBr === 'all' || s?.branchId === selBr) && certStatus(c.expiryDate) !== 'valid';
   });
   const dueCnt = compRecs.filter(r => {
-    const s = STAFF.find(st => st.id === r.staffId);
+    const s = staff.find(st => st.id === r.staffId);
     return (selBr === 'all' || s?.branchId === selBr) && r.status === 'due';
   }).length;
   const expContracts = staffMeta.filter(m => {
-    const s = STAFF.find(st => st.id === m.staffId);
+    const s = staff.find(st => st.id === m.staffId);
     return (selBr === 'all' || s?.branchId === selBr) && daysUntil(m.contractEnd) <= 90 && daysUntil(m.contractEnd) > 0;
   });
+
+  // Pending training requests for HOD
+  const pendingRequests = trainingRequests.filter(r =>
+    r.status === 'pending' && (user?.isAdmin || r.branchId === user?.branchId)
+  );
 
   if (splash) {
     return (
@@ -92,7 +145,7 @@ export default function App() {
     { id: 'documents',     ico: '📁', label: 'Documents & Forms' },
     { id: 'certificates',  ico: '🛡️', label: 'Certificates', badge: expiring.length || null },
     { id: 'competencies',  ico: '✓',  label: 'Competencies', badge: dueCnt || null },
-    { id: 'training',      ico: '🎓', label: 'Training' },
+    { id: 'training',      ico: '🎓', label: 'Training', badge: user.isHOD && pendingRequests.length ? pendingRequests.length : null },
     { id: 'meetings',      ico: '💬', label: 'Meetings' },
   ];
   const adminNav = [
@@ -107,7 +160,13 @@ export default function App() {
     certs, setCerts, docs, setDocs, compRecs, setCompRecs, courses, setCourses,
     meetings, setMeetings, staffMeta, setStaffMeta, vacations, setVacations,
     folders, setFolders, coverage, setCoverage, workload, setWorkload,
-    logistics, setLogistics, user, selBr, activeBranch,
+    logistics, setLogistics,
+    staff, setStaff,
+    schedules, setSchedules,
+    trainingRequests, setTrainingRequests,
+    docAcks, setDocAcks,
+    logisticsTypes, setLogisticsTypes,
+    user, selBr, activeBranch,
   };
 
   return (
@@ -161,7 +220,10 @@ export default function App() {
             <div className="u-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
             <div className="u-role">{user.role}</div>
           </div>
-          <button className="logout-btn" onClick={logout} title="Sign out">⏻</button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <button className="logout-btn" title="Change Password" onClick={() => { setForceChangePwd(false); setShowChangePwd(true); }} style={{ fontSize: 11 }}>🔑</button>
+            <button className="logout-btn" onClick={logout} title="Sign out">⏻</button>
+          </div>
         </div>
       </aside>
 
@@ -170,14 +232,97 @@ export default function App() {
         {view === 'documents'    && <Documents    {...sh} />}
         {view === 'certificates' && <Certificates {...sh} />}
         {view === 'competencies' && <Competencies {...sh} />}
-        {view === 'training'     && <Training     {...sh} />}
+        {view === 'training'     && <Training     {...sh} pendingRequests={pendingRequests} />}
         {view === 'meetings'     && <Meetings     {...sh} />}
         {view === 'staffmgmt'    && <StaffManagement {...sh} />}
         {view === 'coverage'     && <AreasCoverage   {...sh} />}
         {view === 'workload'     && <WorkloadMgmt    {...sh} />}
         {view === 'logistics'    && <LogisticsMgmt   {...sh} />}
-        {view === 'admin'        && <AdminPanel user={user} />}
+        {view === 'admin'        && <AdminPanel user={user} onStaffChange={loadStaff} />}
       </main>
+
+      {showChangePwd && (
+        <ChangePasswordModal
+          user={user}
+          forced={forceChangePwd}
+          onClose={() => { if (!forceChangePwd) setShowChangePwd(false); }}
+          onSuccess={() => {
+            setShowChangePwd(false);
+            setForceChangePwd(false);
+            setUser(u => ({ ...u, forcePasswordChange: false }));
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ChangePasswordModal({ user, forced, onClose, onSuccess }) {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const save = async () => {
+    if (!next || !confirm) { setErr('All fields are required.'); return; }
+    if (next.length < 6) { setErr('New password must be at least 6 characters.'); return; }
+    if (next !== confirm) { setErr('Passwords do not match.'); return; }
+    if (!forced && !current) { setErr('Please enter your current password.'); return; }
+    setSaving(true);
+    setErr('');
+    try {
+      const r = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: user.id, currentPassword: forced ? undefined : current, newPassword: next }),
+      });
+      const result = await r.json();
+      if (!r.ok) { setErr(result.error || 'Failed to change password.'); setSaving(false); return; }
+      onSuccess();
+    } catch {
+      setErr('Server error. Please try again.');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: 'var(--sur)', borderRadius: 14, padding: 28, width: 420, maxWidth: '92vw', border: '1px solid var(--bd)', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ font: '700 16px var(--sora)', color: 'var(--t)', marginBottom: 6 }}>🔑 Change Password</div>
+        {forced && (
+          <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 11, color: '#92400e' }}>
+            ⚠️ You must set a new password before continuing. Default passwords are not allowed.
+          </div>
+        )}
+        {!forced && (
+          <div className="ig" style={{ marginBottom: 10 }}>
+            <label className="inplbl">Current Password</label>
+            <input className="inpf" type="password" value={current} placeholder="••••••••"
+              onChange={e => { setCurrent(e.target.value); setErr(''); }} />
+          </div>
+        )}
+        <div className="ig" style={{ marginBottom: 10 }}>
+          <label className="inplbl">New Password</label>
+          <input className="inpf" type="password" value={next} placeholder="Min. 6 characters"
+            onChange={e => { setNext(e.target.value); setErr(''); }} />
+        </div>
+        <div className="ig" style={{ marginBottom: 14 }}>
+          <label className="inplbl">Confirm New Password</label>
+          <input className="inpf" type="password" value={confirm} placeholder="Re-enter new password"
+            onChange={e => { setConfirm(e.target.value); setErr(''); }} />
+        </div>
+        {err && <div className="err" style={{ marginBottom: 12 }}>⚠ {err}</div>}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          {!forced && (
+            <button className="btn" onClick={onClose}
+              style={{ background: 'var(--sur2)', color: 'var(--t2)' }}>Cancel</button>
+          )}
+          <button className="btn" onClick={save} disabled={saving}>
+            {saving ? 'Saving...' : 'Change Password'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

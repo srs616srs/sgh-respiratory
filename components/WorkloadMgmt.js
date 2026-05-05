@@ -1,8 +1,9 @@
 'use client';
-import { BRANCHES, AREAS_LIST, getStaff } from '../lib/data';
+import { BRANCHES, AREAS_LIST } from '../lib/data';
 import { BranchTag } from './App';
 
-export default function WorkloadMgmt({ workload, setWorkload, coverage, staffMeta, user, selBr, activeBranch }) {
+export default function WorkloadMgmt({ workload, setWorkload, coverage, staffMeta, staff, user, selBr, activeBranch }) {
+  const getStaff = (id) => staff?.find(s => s.id === id);
   const updateVent = (bid, areaId, val) => {
     const v = Math.max(0, parseInt(val) || 0);
     setWorkload(p => ({ ...p, [bid]: { ...p[bid], [areaId]: { ...p[bid]?.[areaId], vent: v } } }));

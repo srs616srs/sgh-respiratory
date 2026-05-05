@@ -1,11 +1,15 @@
 'use client';
-import { useState } from 'react';
-import { staffOf, getBranch, getStaff, COMPETENCIES } from '../lib/data';
+import { useState, useRef } from 'react';
+import { getBranch, COMPETENCIES } from '../lib/data';
 import { BranchTag } from './App';
 
-export default function Competencies({ compRecs, setCompRecs, selBr, activeBranch, user }) {
+export default function Competencies({ compRecs, setCompRecs, selBr, activeBranch, user, staff }) {
   const [sel, setSel] = useState(null);
-  const sl = staffOf(selBr);
+  const [uploadingComp, setUploadingComp] = useState(null); // { staffId, compId }
+  const fileRef = useRef();
+
+  const sl = staff ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD) : [];
+  const getStaffById = (id) => staff?.find(s => s.id === id);
   const gr = (sid, cid) => compRecs.find(r => r.staffId === sid && r.compId === cid) || { status: 'pending' };
   const ico = s => s === 'completed' ? '✓' : s === 'due' ? '!' : '–';
   const pct = sid => {
@@ -16,8 +20,38 @@ export default function Competencies({ compRecs, setCompRecs, selBr, activeBranc
   const updateStatus = (sid, cid, status) => {
     setCompRecs(p => {
       const filtered = p.filter(r => !(r.staffId === sid && r.compId === cid));
-      return [...filtered, { staffId: sid, compId: cid, status, date: status === 'completed' ? new Date().toISOString().split('T')[0] : undefined }];
+      return [...filtered, { staffId: sid, compId: cid, status, date: status === 'completed' ? new Date().toISOString().split('T')[0] : undefined, ...gr(sid, cid) }];
     });
+  };
+
+  const handleEvidenceUpload = async (e, sid, cid) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingComp({ staffId: sid, compId: cid });
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('folder', 'competency-evidence');
+      const res = await fetch('/api/upload', { method: 'POST', body: form });
+      const json = await res.json();
+      if (json.url) {
+        setCompRecs(p => {
+          const filtered = p.filter(r => !(r.staffId === sid && r.compId === cid));
+          const existing = p.find(r => r.staffId === sid && r.compId === cid) || {};
+          return [...filtered, { ...existing, staffId: sid, compId: cid, status: existing.status || 'completed', date: existing.date || new Date().toISOString().split('T')[0], evidenceUrl: json.url, evidenceName: file.name }];
+        });
+      }
+    } catch { /* ignore */ }
+    setUploadingComp(null);
+  };
+
+  const triggerUpload = (sid, cid) => {
+    // Create a one-time file input click
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.jpg,.png,.docx';
+    input.onchange = (e) => handleEvidenceUpload(e, sid, cid);
+    input.click();
   };
 
   return (
@@ -57,17 +91,29 @@ export default function Competencies({ compRecs, setCompRecs, selBr, activeBranc
 
         {sel ? (
           <div className="card">
-            <div className="stitle">📋 {getStaff(sel)?.name} <span className="scnt">{getBranch(getStaff(sel)?.branchId)?.name}</span></div>
+            <div className="stitle">📋 {getStaffById(sel)?.name} <span className="scnt">{getBranch(getStaffById(sel)?.branchId)?.name}</span></div>
             <table>
-              <thead><tr><th>Competency</th><th>Status</th><th>Date</th>{user.isHOD && <th>Update</th>}</tr></thead>
+              <thead><tr><th>Competency</th><th>Status</th><th>Date</th><th>Evidence</th>{user.isHOD && <th>Update</th>}</tr></thead>
               <tbody>
                 {COMPETENCIES.map(c => {
                   const r = gr(sel, c.id);
+                  const isUploading = uploadingComp?.staffId === sel && uploadingComp?.compId === c.id;
                   return (
                     <tr key={c.id}>
                       <td style={{ color: 'var(--t)' }}>{c.name}</td>
                       <td><span className={`b ${r.status}`}>{ico(r.status)} {r.status}</span></td>
                       <td style={{ fontSize: 10.5 }}>{r.date || '—'}</td>
+                      <td>
+                        {r.evidenceUrl
+                          ? <a href={r.evidenceUrl} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: 'var(--a)', textDecoration: 'underline' }}>📎 {r.evidenceName || 'View'}</a>
+                          : user.isHOD
+                            ? <button onClick={() => triggerUpload(sel, c.id)} disabled={isUploading}
+                                style={{ fontSize: 10, padding: '2px 8px', background: 'var(--sur2)', color: 'var(--t2)', border: '1px solid var(--bd)', borderRadius: 5, cursor: 'pointer', fontFamily: 'var(--sora)' }}>
+                                {isUploading ? '⏳' : '⬆ Upload PDF'}
+                              </button>
+                            : <span style={{ color: 'var(--t3)', fontSize: 10 }}>—</span>
+                        }
+                      </td>
                       {user.isHOD && (
                         <td>
                           <select className="inpf" style={{ width: 'auto', padding: '3px 7px', fontSize: 10 }} value={r.status} onChange={e => updateStatus(sel, c.id, e.target.value)}>

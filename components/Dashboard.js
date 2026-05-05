@@ -1,26 +1,28 @@
 'use client';
-import { BRANCHES, staffOf, getBranch, getStaff, certStatus, daysUntil } from '../lib/data';
+import { BRANCHES, getBranch, certStatus, daysUntil } from '../lib/data';
 import { BranchTag } from './App';
 
-export default function Dashboard({ certs, compRecs, courses, meetings, staffMeta, user, selBr, activeBranch, expiring, expContracts, setView, setSelBr }) {
-  const sl = staffOf(selBr);
-  const brExp  = (bid) => certs.filter(c => getStaff(c.staffId)?.branchId === bid && certStatus(c.expiryDate) !== 'valid').length;
-  const brDue  = (bid) => compRecs.filter(r => getStaff(r.staffId)?.branchId === bid && r.status === 'due').length;
+export default function Dashboard({ certs, compRecs, courses, meetings, staffMeta, staff, user, selBr, activeBranch, expiring, expContracts, setView, setSelBr }) {
+  const getStaffById = (id) => staff?.find(s => s.id === id);
+  const sl = staff ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD) : [];
+  const brStaff = (bid) => staff ? staff.filter(s => s.branchId === bid && !s.isHOD) : [];
+  const brExp  = (bid) => certs.filter(c => getStaffById(c.staffId)?.branchId === bid && certStatus(c.expiryDate) !== 'valid').length;
+  const brDue  = (bid) => compRecs.filter(r => getStaffById(r.staffId)?.branchId === bid && r.status === 'due').length;
   const brPct  = (bid) => {
-    const sl2 = staffOf(bid); if (!sl2.length) return 0;
-    const tot = courses.reduce((a, c) => a + c.attendance.filter(id => getStaff(id)?.branchId === bid).length, 0);
-    return Math.round(tot / (courses.length * sl2.length) * 100);
+    const sl2 = brStaff(bid); if (!sl2.length) return 0;
+    const tot = courses.reduce((a, c) => a + c.attendance.filter(id => getStaffById(id)?.branchId === bid).length, 0);
+    return Math.round(tot / Math.max(courses.length * sl2.length, 1) * 100);
   };
-  const expiredL = certs.filter(c => (selBr === 'all' || getStaff(c.staffId)?.branchId === selBr) && certStatus(c.expiryDate) === 'expired');
-  const expSoonL = certs.filter(c => (selBr === 'all' || getStaff(c.staffId)?.branchId === selBr) && certStatus(c.expiryDate) === 'expiring');
-  const dueCnt = compRecs.filter(r => (selBr === 'all' || getStaff(r.staffId)?.branchId === selBr) && r.status === 'due').length;
-  const totAtt = courses.reduce((a, c) => a + c.attendance.filter(id => selBr === 'all' || getStaff(id)?.branchId === selBr).length, 0);
-  const attPct = sl.length ? Math.round(totAtt / (courses.length * sl.length) * 100) : 0;
+  const expiredL = certs.filter(c => (selBr === 'all' || getStaffById(c.staffId)?.branchId === selBr) && certStatus(c.expiryDate) === 'expired');
+  const expSoonL = certs.filter(c => (selBr === 'all' || getStaffById(c.staffId)?.branchId === selBr) && certStatus(c.expiryDate) === 'expiring');
+  const dueCnt = compRecs.filter(r => (selBr === 'all' || getStaffById(r.staffId)?.branchId === selBr) && r.status === 'due').length;
+  const totAtt = courses.reduce((a, c) => a + c.attendance.filter(id => selBr === 'all' || getStaffById(id)?.branchId === selBr).length, 0);
+  const attPct = sl.length ? Math.round(totAtt / Math.max(courses.length * sl.length, 1) * 100) : 0;
 
   const alerts = [
-    ...expiredL.map(c => ({ t: 'dan',  msg: `${getStaff(c.staffId)?.name} [${getBranch(getStaff(c.staffId)?.branchId)?.name}] — ${c.type} EXPIRED`, sub: `Expired: ${c.expiryDate}` })),
-    ...expSoonL.map(c => ({ t: 'warn', msg: `${getStaff(c.staffId)?.name} [${getBranch(getStaff(c.staffId)?.branchId)?.name}] — ${c.type} expiring in ${daysUntil(c.expiryDate)}d`, sub: `Due: ${c.expiryDate}` })),
-    ...expContracts.map(m => ({ t: 'info', msg: `${getStaff(m.staffId)?.name} — Contract expiring in ${daysUntil(m.contractEnd)}d`, sub: `Ends: ${m.contractEnd}` })),
+    ...expiredL.map(c => ({ t: 'dan',  msg: `${getStaffById(c.staffId)?.name} [${getBranch(getStaffById(c.staffId)?.branchId)?.name}] — ${c.type} EXPIRED`, sub: `Expired: ${c.expiryDate}` })),
+    ...expSoonL.map(c => ({ t: 'warn', msg: `${getStaffById(c.staffId)?.name} [${getBranch(getStaffById(c.staffId)?.branchId)?.name}] — ${c.type} expiring in ${daysUntil(c.expiryDate)}d`, sub: `Due: ${c.expiryDate}` })),
+    ...expContracts.map(m => ({ t: 'info', msg: `${getStaffById(m.staffId)?.name} — Contract expiring in ${daysUntil(m.contractEnd)}d`, sub: `Ends: ${m.contractEnd}` })),
     ...(dueCnt > 0 ? [{ t: 'warn', msg: `${dueCnt} competency assessments overdue`, sub: selBr === 'all' ? 'Across all 8 branches' : 'This branch' }] : []),
   ];
   const visMtg = meetings.filter(m => selBr === 'all' || m.branchId === 'all' || m.branchId === selBr);
@@ -52,7 +54,7 @@ export default function Dashboard({ certs, compRecs, courses, meetings, staffMet
                     <div style={{ fontSize: 8.5, color: 'var(--t3)', background: 'var(--sur2)', padding: '2px 5px', borderRadius: 4, fontWeight: 600, border: '1px solid var(--bd)' }}>{br.short}</div>
                   </div>
                   <div className="nc-grid">
-                    <div className="nc-s"><div className="nc-v">{staffOf(br.id).length}</div><div className="nc-l">Staff</div></div>
+                    <div className="nc-s"><div className="nc-v">{brStaff(br.id).length}</div><div className="nc-l">Staff</div></div>
                     <div className="nc-s"><div className="nc-v" style={{ color: brExp(br.id) > 0 ? 'var(--dan)' : 'var(--a2)' }}>{brExp(br.id)}</div><div className="nc-l">Cert alerts</div></div>
                     <div className="nc-s"><div className="nc-v" style={{ color: brDue(br.id) > 0 ? 'var(--warn)' : 'var(--a2)' }}>{brDue(br.id)}</div><div className="nc-l">Due comps</div></div>
                     <div className="nc-s"><div className="nc-v">{brPct(br.id)}%</div><div className="nc-l">Training</div></div>
@@ -90,28 +92,32 @@ export default function Dashboard({ certs, compRecs, courses, meetings, staffMet
                 <div><div className="alt">{m.title}</div><div className="als">{m.date} · {m.attendees.length} attendees · {m.signatures.length} signed</div></div>
               </div>
             ))}
+            {visMtg.length === 0 && <div className="es"><div className="es-ico">💬</div>No meetings yet</div>}
           </div>
         </div>
 
         <div className="card" style={{ marginTop: 11 }}>
           <div className="stitle">🎓 Training Overview</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
-            {courses.filter(c => selBr === 'all' || c.branchId === 'all' || c.branchId === selBr).map(c => {
-              const att = c.attendance.filter(id => selBr === 'all' || getStaff(id)?.branchId === selBr).length;
-              const tot = sl.length || 1;
-              const pct = Math.round(att / tot * 100);
-              return (
-                <div key={c.id} style={{ background: 'var(--sur2)', borderRadius: 8, padding: 9, border: '1px solid var(--bd)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                    <span style={{ fontSize: 10.5, color: 'var(--t)', fontWeight: 500 }}>{c.thumb} {c.name}</span>
-                    <span style={{ fontSize: 9.5, color: 'var(--t3)' }}>{att}/{tot}</span>
+          {courses.length === 0
+            ? <div className="es"><div className="es-ico">🎓</div>No courses added yet</div>
+            : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+              {courses.filter(c => selBr === 'all' || c.branchId === 'all' || c.branchId === selBr).map(c => {
+                const att = c.attendance.filter(id => selBr === 'all' || getStaffById(id)?.branchId === selBr).length;
+                const tot = sl.length || 1;
+                const pct = Math.round(att / tot * 100);
+                return (
+                  <div key={c.id} style={{ background: 'var(--sur2)', borderRadius: 8, padding: 9, border: '1px solid var(--bd)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <span style={{ fontSize: 10.5, color: 'var(--t)', fontWeight: 500 }}>{c.thumb} {c.name}</span>
+                      <span style={{ fontSize: 9.5, color: 'var(--t3)' }}>{att}/{tot}</span>
+                    </div>
+                    <div className="pb"><div className="pf" style={{ width: `${pct}%` }} /></div>
+                    <div style={{ fontSize: 9, color: 'var(--t3)' }}>{pct}% attended</div>
                   </div>
-                  <div className="pb"><div className="pf" style={{ width: `${pct}%` }} /></div>
-                  <div style={{ fontSize: 9, color: 'var(--t3)' }}>{pct}% attended</div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          }
         </div>
       </div>
     </>

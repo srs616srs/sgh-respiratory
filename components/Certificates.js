@@ -1,14 +1,14 @@
 'use client';
 import { useState } from 'react';
-import { staffOf, getBranch, certStatus, daysUntil } from '../lib/data';
+import { getBranch, certStatus, daysUntil } from '../lib/data';
 import { BranchTag } from './App';
 
 const TYPES = ['BLS', 'ACLS', 'PALS', 'NRP'];
 
-export default function Certificates({ certs, setCerts, selBr, activeBranch }) {
+export default function Certificates({ certs, setCerts, selBr, activeBranch, staff }) {
   const [addModal, setAddModal] = useState(null); // staffId
   const [newCert, setNewCert] = useState({ type: 'BLS', expiryDate: '' });
-  const sl = staffOf(selBr);
+  const sl = staff ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD) : [];
   const gc = (sid, t) => certs.find(c => c.staffId === sid && c.type === t);
   const expC = certs.filter(c => sl.some(s => s.id === c.staffId) && certStatus(c.expiryDate) === 'expired').length;
   const expS = certs.filter(c => sl.some(s => s.id === c.staffId) && certStatus(c.expiryDate) === 'expiring').length;

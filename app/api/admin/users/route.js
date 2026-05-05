@@ -15,18 +15,19 @@ export async function GET() {
 
 export async function POST(req) {
   const body = await req.json();
-  if (!body.full_name || !body.email || !body.password) {
-    return Response.json({ error: 'Name, email and password are required.' }, { status: 400 });
+  if (!body.full_name || !body.email) {
+    return Response.json({ error: 'Name and email are required.' }, { status: 400 });
   }
   const { data, error } = await getDb()
     .from('app_users')
     .insert({
       email: body.email.toLowerCase().trim(),
-      password_hash: body.password,
+      password_hash: '123456',
       full_name: body.full_name.trim(),
       role: body.role || 'staff',
       branch_id: body.branch_id || 'all',
       active: true,
+      force_password_change: true,
     })
     .select('id,email,full_name,role,branch_id,active,created_at');
   if (error) return Response.json({ error: error.message }, { status: 500 });
