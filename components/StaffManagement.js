@@ -14,7 +14,11 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const sl = staff ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD) : [];
+  // HODs always see only their own branch staff; admins see by selBr
+  const effectiveBranch = user.isAdmin ? selBr : user.branchId;
+  const sl = staff ? staff.filter(s => (effectiveBranch === 'all' || s.branchId === effectiveBranch) && !s.isHOD) : [];
+  // HOD can only edit their own branch; admin can edit any
+  const canEdit = user.isAdmin || selBr === user.branchId;
   const getStaffById = (id) => staff?.find(s => s.id === id);
   const getMeta = (sid) => staffMeta.find(m => m.staffId === sid) || {};
   const expiring90 = staffMeta.filter(m => {
@@ -163,17 +167,19 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
             <div className="card" style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <div style={{ font: '600 12px var(--sora)', color: 'var(--t)' }}>📍 Zone Setup</div>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <input className="inpf" style={{ width: 80, padding: '4px 8px', fontSize: 10.5 }} placeholder="Z1, ICU…" value={newZoneName} onChange={e => setNewZoneName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addZone()} />
-                  <button className="btn pri sm" onClick={addZone}>+ Add Zone</button>
-                </div>
+                {canEdit && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input className="inpf" style={{ width: 80, padding: '4px 8px', fontSize: 10.5 }} placeholder="Z1, ICU…" value={newZoneName} onChange={e => setNewZoneName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addZone()} />
+                    <button className="btn pri sm" onClick={addZone}>+ Add Zone</button>
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {zones.length === 0 && <span style={{ fontSize: 10.5, color: 'var(--t3)' }}>No zones defined yet — add zone names (e.g. Z1, Z2, ICU, Ward…)</span>}
                 {zones.map(z => (
                   <span key={z} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', background: '#e0f2fe', color: '#075985', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>
                     {z}
-                    {user.isHOD && <span onClick={() => removeZone(z)} style={{ cursor: 'pointer', color: '#dc2626', marginLeft: 2 }}>×</span>}
+                    {canEdit && <span onClick={() => removeZone(z)} style={{ cursor: 'pointer', color: '#dc2626', marginLeft: 2 }}>×</span>}
                   </span>
                 ))}
               </div>
@@ -185,7 +191,7 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
                 <div className="stitle" style={{ margin: 0 }}>📅 {SCHED_MONTH_NAME} — 12-Hour Shift Schedule</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   {saved && <span style={{ fontSize: 10.5, color: '#166534', fontWeight: 600 }}>✓ Saved</span>}
-                  {user.isHOD && (
+                  {canEdit && (
                     <button className="btn pri sm" onClick={handleSave} disabled={saving}>
                       {saving ? '⏳ Saving…' : '💾 Save Schedule'}
                     </button>
@@ -198,7 +204,7 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
                 </div>
               </div>
               <div style={{ fontSize: 10, color: 'var(--t3)', marginBottom: 8 }}>
-                {user.isHOD ? 'Click any cell to cycle: Day → Night → Off. Set zone per staff.' : 'View-only — contact your HOD to update shifts.'}
+                {canEdit ? 'Click any cell to cycle: Day → Night → Off. Set zone per staff.' : 'View-only — contact your HOD to update shifts.'}
               </div>
               <div className="sched-wrap">
                 <table className="sched-tbl">
@@ -214,7 +220,7 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
                       <tr key={s.id}>
                         <td className="sched-name">{s.name.split(' ').slice(0, 2).join(' ')}</td>
                         <td>
-                          {user.isHOD ? (
+                          {canEdit ? (
                             <select value={getStaffZone(s.id)} onChange={e => setZoneForStaff(s.id, e.target.value)}
                               style={{ fontSize: 9.5, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--bd)', background: 'var(--sur2)', color: 'var(--t)', width: '100%' }}>
                               <option value="">—</option>
@@ -228,7 +234,7 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
                           const label = getDayLabel(s.id, i);
                           const { bg, color } = dayBg(label);
                           return (
-                            <td key={i} onClick={() => user.isHOD && cycleDay(s.id, i)} style={{ cursor: user.isHOD ? 'pointer' : 'default' }}>
+                            <td key={i} onClick={() => canEdit && cycleDay(s.id, i)} style={{ cursor: canEdit ? 'pointer' : 'default' }}>
                               <div style={{ minWidth: 28, textAlign: 'center', padding: '3px 2px', borderRadius: 4, background: bg, color, fontSize: 8.5, fontWeight: 700 }}>{label}</div>
                             </td>
                           );
@@ -260,7 +266,7 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
                       <div className="vac-dates">📅 {v.start} → {v.end} · {v.days} days · {v.type}</div>
                     </div>
                     <span className={`b ${v.status === 'approved' ? 'valid' : 'pending-v'}`}>{v.status === 'approved' ? '✓ Approved' : '⏳ Pending'}</span>
-                    {user.isHOD && v.status === 'pending' && (
+                    {canEdit && v.status === 'pending' && (
                       <div style={{ display: 'flex', gap: 5 }}>
                         <button className="btn grn sm" onClick={() => approveVac(v.id)}>✓</button>
                         <button className="btn dan sm" onClick={() => rejectVac(v.id)}>✗</button>
@@ -345,7 +351,7 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
             </div>
             {sl.map(s => {
               const sf = folders.filter(f => f.staffId === s.id);
-              if (!sf.length && !user.isHOD) return null;
+              if (!sf.length && !canEdit) return null;
               return (
                 <div key={s.id} className="card" style={{ marginBottom: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: sf.length ? 10 : 0 }}>
@@ -355,7 +361,7 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
                       <div style={{ fontSize: 9.5, color: 'var(--t3)' }}>{s.role} · {getMeta(s.id).sghId}</div>
                     </div>
                     <span style={{ fontSize: 10.5, color: 'var(--t3)' }}>{sf.length} record{sf.length !== 1 ? 's' : ''}</span>
-                    {user.isHOD && <button className="btn pri sm" onClick={() => setShowFolderModal(s.id)}>+ Add Record</button>}
+                    {canEdit && <button className="btn pri sm" onClick={() => setShowFolderModal(s.id)}>+ Add Record</button>}
                   </div>
                   <div className="folder-list">
                     {sf.map(f => (
