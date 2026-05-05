@@ -5,10 +5,15 @@ import { BranchTag } from './App';
 
 const TYPES = ['BLS', 'ACLS', 'PALS', 'NRP'];
 
-export default function Certificates({ certs, setCerts, selBr, activeBranch, staff }) {
+export default function Certificates({ certs, setCerts, selBr, activeBranch, staff, user }) {
   const [addModal, setAddModal] = useState(null); // staffId
   const [newCert, setNewCert] = useState({ type: 'BLS', expiryDate: '' });
-  const sl = staff ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD) : [];
+  // Staff users only see their own row; HODs see all branch staff
+  const sl = staff
+    ? user.isHOD
+      ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD)
+      : staff.filter(s => s.id === user.id)
+    : [];
   const gc = (sid, t) => certs.find(c => c.staffId === sid && c.type === t);
   const expC = certs.filter(c => sl.some(s => s.id === c.staffId) && certStatus(c.expiryDate) === 'expired').length;
   const expS = certs.filter(c => sl.some(s => s.id === c.staffId) && certStatus(c.expiryDate) === 'expiring').length;
