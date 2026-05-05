@@ -252,7 +252,10 @@ export default function App() {
             <div className="u-role">{user.role}</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <button className="logout-btn" title="Change Password" onClick={() => { setForceChangePwd(false); setShowChangePwd(true); }} style={{ fontSize: 11 }}>🔑</button>
+            <button className="logout-btn" title="Change Password" onClick={() => { setForceChangePwd(false); setShowChangePwd(true); }}
+              style={{ fontSize: 10, padding: '3px 6px', display: 'flex', alignItems: 'center', gap: 3 }}>
+              🔑 <span style={{ fontSize: 9 }}>Password</span>
+            </button>
             <button className="logout-btn" onClick={logout} title="Sign out">⏻</button>
           </div>
         </div>

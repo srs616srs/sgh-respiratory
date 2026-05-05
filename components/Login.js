@@ -7,6 +7,7 @@ export default function Login({ onLogin }) {
   const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
 
   const go = async () => {
     if (!email.trim()) { setErr('Please enter your email.'); return; }
@@ -65,6 +66,24 @@ export default function Login({ onLogin }) {
         <button className="lbtn" onClick={go} disabled={loading}>
           {loading ? 'Signing in...' : 'Sign In →'}
         </button>
+
+        <div style={{ textAlign: 'center', marginTop: 10 }}>
+          <span onClick={() => setShowForgot(f => !f)}
+            style={{ fontSize: 11, color: 'var(--a)', cursor: 'pointer', textDecoration: 'underline' }}>
+            Forgot password?
+          </span>
+        </div>
+
+        {showForgot && (
+          <div style={{ marginTop: 10, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 9, padding: '12px 14px', fontSize: 11, color: '#075985', lineHeight: 1.6 }}>
+            🔒 <strong>Password Reset</strong><br />
+            Please contact the <strong>Network Admin</strong> to reset your password:<br />
+            <a href="mailto:sultanalshehri@sghgroup.net" style={{ color: '#0284c7', fontWeight: 600 }}>
+              sultanalshehri@sghgroup.net
+            </a>
+          </div>
+        )}
+
         <div className="lhint">
           <strong style={{ display: 'block', marginBottom: 4, color: 'var(--t2)' }}>Network Admin Login</strong>
           sultanalshehri@sghgroup.net · password: Admin@SGH2025

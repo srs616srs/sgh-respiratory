@@ -26,6 +26,9 @@ export default function AdminPanel({ user, onStaffChange }) {
   const [form, setForm] = useState({ ...EMPTY, branch_id: branchDefault });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [resetModal, setResetModal] = useState(null); // { id, name }
+  const [resetPwd, setResetPwd] = useState('');
+  const [resetMsg, setResetMsg] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -69,6 +72,19 @@ export default function AdminPanel({ user, onStaffChange }) {
       body: JSON.stringify({ id }),
     });
     await load();
+  };
+
+  const resetPassword = async () => {
+    if (!resetPwd || resetPwd.length < 6) { setResetMsg('Password must be at least 6 characters.'); return; }
+    const r = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: resetModal.id, newPassword: resetPwd }),
+    });
+    const result = await r.json();
+    if (!r.ok) { setResetMsg(result.error || 'Failed.'); return; }
+    setResetMsg('✓ Password updated successfully.');
+    setTimeout(() => { setResetModal(null); setResetPwd(''); setResetMsg(''); }, 1500);
   };
 
   const roleLabel = (r) => ROLES.find(x => x.value === r)?.label?.split(' (')[0] || r;
@@ -131,9 +147,15 @@ export default function AdminPanel({ user, onStaffChange }) {
                         </span>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: 6 }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           <button className="btn" onClick={() => openEdit(u)}
                             style={{ fontSize: 10, padding: '3px 10px' }}>Edit</button>
+                          {isAdmin && (
+                            <button onClick={() => { setResetModal({ id: u.id, name: u.full_name }); setResetPwd(''); setResetMsg(''); }}
+                              style={{ fontSize: 10, padding: '3px 10px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--sora)' }}>
+                              🔑 Reset
+                            </button>
+                          )}
                           {u.id !== user.id && (isAdmin || u.role === 'staff') && (
                             <button onClick={() => del(u.id, u.full_name)}
                               style={{ fontSize: 10, padding: '3px 10px', background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--sora)' }}>
@@ -166,6 +188,35 @@ export default function AdminPanel({ user, onStaffChange }) {
           </div>
         </div>
       </div>
+
+      {resetModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--sur)', borderRadius: 14, padding: 24, width: 380, maxWidth: '92vw', border: '1px solid var(--bd)', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+            <div style={{ font: '700 15px var(--sora)', color: 'var(--t)', marginBottom: 6 }}>🔑 Reset Password</div>
+            <div style={{ fontSize: 11, color: 'var(--t2)', marginBottom: 16 }}>
+              Set a new password for <strong>{resetModal.name}</strong>. They will be able to change it after logging in.
+            </div>
+            <div className="ig" style={{ marginBottom: 12 }}>
+              <label className="inplbl">New Password</label>
+              <input className="inpf" type="password" value={resetPwd} placeholder="Min. 6 characters"
+                onChange={e => { setResetPwd(e.target.value); setResetMsg(''); }} />
+            </div>
+            {resetMsg && (
+              <div style={{ marginBottom: 12, fontSize: 11, padding: '8px 12px', borderRadius: 7,
+                background: resetMsg.startsWith('✓') ? '#dcfce7' : '#fee2e2',
+                color: resetMsg.startsWith('✓') ? '#166534' : '#991b1b',
+                border: `1px solid ${resetMsg.startsWith('✓') ? '#86efac' : '#fecaca'}` }}>
+                {resetMsg}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn" onClick={() => setResetModal(null)}
+                style={{ background: 'var(--sur2)', color: 'var(--t2)' }}>Cancel</button>
+              <button className="btn" onClick={resetPassword}>Set Password</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
