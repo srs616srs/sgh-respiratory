@@ -1,9 +1,9 @@
 'use client';
 import { useState } from 'react';
-import { getBranch, daysUntil, SCHED_MONTH_NAME, SCHED_DAYS_COUNT, BRANCHES } from '../lib/data';
+import { getBranch, daysUntil, SCHED_MONTH_NAME, SCHED_DAYS_COUNT } from '../lib/data';
 import { BranchTag } from './App';
 
-export default function StaffManagement({ staffMeta, setStaffMeta, vacations, setVacations, folders, setFolders, schedules, setSchedules, user, selBr, activeBranch, staff }) {
+export default function StaffManagement({ staffMeta, setStaffMeta, vacations, setVacations, folders, setFolders, schedules, setSchedules, saveSchedule, monthYear, user, selBr, activeBranch, staff }) {
   const [tab, setTab] = useState(0);
   const [showFolderModal, setShowFolderModal] = useState(null);
   const [folderNote, setFolderNote] = useState('');
@@ -11,6 +11,8 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
   const [vacModal, setVacModal] = useState(false);
   const [newVac, setNewVac] = useState({ staffId: '', start: '', end: '', type: 'Annual', days: 0, status: 'pending' });
   const [newZoneName, setNewZoneName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const sl = staff ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD) : [];
   const getStaffById = (id) => staff?.find(s => s.id === id);
@@ -71,6 +73,15 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
     if (code.startsWith('D')) return { bg: '#dbeafe', color: '#1d4ed8' };
     if (code.startsWith('N')) return { bg: '#ede9fe', color: '#5b21b6' };
     return { bg: '#f3f4f6', color: '#9ca3af' };
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    const key = selBr === 'all' ? 'all' : selBr;
+    await saveSchedule(key, brSched);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
   };
 
   const today = new Date().getDate() - 1;
@@ -172,10 +183,18 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
             <div className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <div className="stitle" style={{ margin: 0 }}>📅 {SCHED_MONTH_NAME} — 12-Hour Shift Schedule</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {saved && <span style={{ fontSize: 10.5, color: '#166534', fontWeight: 600 }}>✓ Saved</span>}
+                  {user.isHOD && (
+                    <button className="btn pri sm" onClick={handleSave} disabled={saving}>
+                      {saving ? '⏳ Saving…' : '💾 Save Schedule'}
+                    </button>
+                  )}
                 <div className="sched-legend">
                   {[['D', 'Day (07:00–19:00)', '#dbeafe', '#1d4ed8'], ['N', 'Night (19:00–07:00)', '#ede9fe', '#5b21b6'], ['O', 'Off', '#f3f4f6', '#9ca3af']].map(([c, l, bg, col]) => (
                     <div key={c} className="sleg"><div className="sleg-dot" style={{ background: bg, color: col, fontWeight: 700, fontSize: 9 }}>{c}</div>{l}</div>
                   ))}
+                </div>
                 </div>
               </div>
               <div style={{ fontSize: 10, color: 'var(--t3)', marginBottom: 8 }}>

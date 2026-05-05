@@ -66,6 +66,33 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
+  // Current month key e.g. "2026-05"
+  const monthYear = new Date().toISOString().slice(0, 7);
+
+  // Load schedule for a branch from DB
+  const loadSchedule = async (branchId) => {
+    try {
+      const r = await fetch(`/api/schedules?branch_id=${branchId}&month_year=${monthYear}`);
+      if (r.ok) {
+        const data = await r.json();
+        if (data && Object.keys(data).length > 0) {
+          setSchedules(p => ({ ...p, [branchId]: data }));
+        }
+      }
+    } catch { /* ignore */ }
+  };
+
+  // Save schedule for a branch to DB
+  const saveSchedule = async (branchId, data) => {
+    try {
+      await fetch('/api/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch_id: branchId, month_year: monthYear, data }),
+      });
+    } catch { /* ignore */ }
+  };
+
   // Load staff from DB after login
   const loadStaff = async () => {
     try {
@@ -92,6 +119,10 @@ export default function App() {
     setUser(u);
     setSelBr(u.isHOD ? 'all' : u.branchId);
     loadStaff();
+    // Load schedules — all branches for admin, own branch for HOD/staff
+    const { BRANCHES: BR } = require('../lib/data');
+    const branchesToLoad = u.isAdmin ? BR.map(b => b.id) : [u.branchId];
+    branchesToLoad.forEach(bid => loadSchedule(bid));
     if (u.forcePasswordChange) {
       setForceChangePwd(true);
       setShowChangePwd(true);
@@ -162,7 +193,7 @@ export default function App() {
     folders, setFolders, coverage, setCoverage, workload, setWorkload,
     logistics, setLogistics,
     staff, setStaff,
-    schedules, setSchedules,
+    schedules, setSchedules, saveSchedule, monthYear,
     trainingRequests, setTrainingRequests,
     docAcks, setDocAcks,
     logisticsTypes, setLogisticsTypes,
