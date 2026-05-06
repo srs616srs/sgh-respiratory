@@ -60,6 +60,7 @@ export default function App() {
   // UI state
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [forceChangePwd, setForceChangePwd] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1800);
@@ -252,6 +253,10 @@ export default function App() {
             <div className="u-role">{user.role}</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <button className="logout-btn" title="My Profile" onClick={() => setShowProfile(true)}
+              style={{ fontSize: 10, padding: '3px 6px', display: 'flex', alignItems: 'center', gap: 3 }}>
+              👤 <span style={{ fontSize: 9 }}>Profile</span>
+            </button>
             <button className="logout-btn" title="Change Password" onClick={() => { setForceChangePwd(false); setShowChangePwd(true); }}
               style={{ fontSize: 10, padding: '3px 6px', display: 'flex', alignItems: 'center', gap: 3 }}>
               🔑 <span style={{ fontSize: 9 }}>Password</span>
@@ -275,6 +280,14 @@ export default function App() {
         {view === 'admin'        && <AdminPanel user={user} onStaffChange={loadStaff} />}
       </main>
 
+      {showProfile && (
+        <ProfileModal
+          user={user}
+          onClose={() => setShowProfile(false)}
+          onSave={(updated) => { setUser(u => ({ ...u, ...updated })); setShowProfile(false); }}
+        />
+      )}
+
       {showChangePwd && (
         <ChangePasswordModal
           user={user}
@@ -287,6 +300,74 @@ export default function App() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function ProfileModal({ user, onClose, onSave }) {
+  const [email, setEmail] = useState(user.email || '');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const save = async () => {
+    setSaving(true);
+    setMsg('');
+    try {
+      const r = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: user.id, email: email.trim() || null }),
+      });
+      const result = await r.json();
+      if (!r.ok) { setMsg(result.error || 'Failed to save.'); setSaving(false); return; }
+      onSave({ email: result.email });
+    } catch {
+      setMsg('Server error. Try again.');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: 'var(--sur)', borderRadius: 14, padding: 28, width: 420, maxWidth: '92vw', border: '1px solid var(--bd)', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ font: '700 16px var(--sora)', color: 'var(--t)', marginBottom: 18 }}>👤 My Profile</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16, background: 'var(--sur2)', borderRadius: 9, padding: '12px 14px' }}>
+          <div>
+            <div style={{ fontSize: 9, color: 'var(--t3)', fontWeight: 600, marginBottom: 3 }}>FULL NAME</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--t)' }}>{user.name}</div>
+          </div>
+          {user.sghId && (
+            <div>
+              <div style={{ fontSize: 9, color: 'var(--t3)', fontWeight: 600, marginBottom: 3 }}>SGH ID</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--a)', fontFamily: 'monospace' }}>{user.sghId}</div>
+            </div>
+          )}
+          <div>
+            <div style={{ fontSize: 9, color: 'var(--t3)', fontWeight: 600, marginBottom: 3 }}>ROLE</div>
+            <div style={{ fontSize: 11, color: 'var(--t2)' }}>{user.role}</div>
+          </div>
+        </div>
+
+        <div className="ig" style={{ marginBottom: 14 }}>
+          <label className="inplbl">Email Address <span style={{ color: 'var(--t3)', fontSize: 9 }}>(optional — used for notifications)</span></label>
+          <input className="inpf" type="email" value={email} placeholder="name@sghgroup.net"
+            onChange={e => { setEmail(e.target.value); setMsg(''); }} />
+        </div>
+
+        {msg && (
+          <div style={{ marginBottom: 12, fontSize: 11, padding: '8px 12px', borderRadius: 7,
+            background: msg.startsWith('✓') ? '#dcfce7' : '#fee2e2',
+            color: msg.startsWith('✓') ? '#166534' : '#991b1b' }}>
+            {msg}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn" onClick={onClose} style={{ background: 'var(--sur2)', color: 'var(--t2)' }}>Cancel</button>
+          <button className="btn" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save Profile'}</button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -13,7 +13,7 @@ const BRANCH_OPTIONS = [
   ...BRANCHES.map(b => ({ id: b.id, name: b.full })),
 ];
 
-const EMPTY = { full_name: '', email: '', role: 'staff', branch_id: 'jeddah', active: true };
+const EMPTY = { full_name: '', email: '', sgh_id: '', role: 'staff', branch_id: 'jeddah', active: true };
 
 export default function AdminPanel({ user, onStaffChange }) {
   const isAdmin = user.isAdmin;
@@ -47,7 +47,9 @@ export default function AdminPanel({ user, onStaffChange }) {
   const openEdit = (u) => { setForm({ ...u, password: '' }); setErr(''); setModal(u); };
 
   const save = async () => {
-    if (!form.full_name || !form.email) { setErr('Name and email are required.'); return; }
+    if (!form.full_name) { setErr('Full name is required.'); return; }
+    if (form.role === 'staff' && !form.sgh_id) { setErr('SGH ID is required for staff.'); return; }
+    if (form.role !== 'staff' && !form.email) { setErr('Email is required for HOD/Admin accounts.'); return; }
     setSaving(true);
     setErr('');
     const method = modal === 'add' ? 'POST' : 'PUT';
@@ -123,6 +125,7 @@ export default function AdminPanel({ user, onStaffChange }) {
                 <thead>
                   <tr>
                     <th>Name</th>
+                    <th>SGH ID</th>
                     <th>Email</th>
                     <th>Role</th>
                     <th>Branch</th>
@@ -134,7 +137,8 @@ export default function AdminPanel({ user, onStaffChange }) {
                   {users.map(u => (
                     <tr key={u.id}>
                       <td style={{ fontWeight: 600, color: 'var(--t)' }}>{u.full_name}</td>
-                      <td style={{ color: 'var(--t2)', fontSize: 10.5 }}>{u.email}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: 10.5, color: 'var(--a)', fontWeight: 600 }}>{u.sgh_id || '—'}</td>
+                      <td style={{ color: 'var(--t2)', fontSize: 10.5 }}>{u.email || '—'}</td>
                       <td>
                         <span className={`ratio-badge ${u.role === 'admin' ? 'ratio-bad' : u.role === 'hod' ? 'ratio-warn' : 'ratio-ok'}`}>
                           {roleLabel(u.role)}
@@ -231,9 +235,21 @@ export default function AdminPanel({ user, onStaffChange }) {
                 onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))} />
             </div>
 
+            {/* SGH ID — required for staff */}
             <div className="ig" style={{ marginBottom: 10 }}>
-              <label className="inplbl">Email Address</label>
-              <input className="inpf" type="email" value={form.email} placeholder="name@sghgroup.net"
+              <label className="inplbl">
+                SGH ID {form.role === 'staff' ? <span style={{ color: 'var(--dan)' }}>*</span> : <span style={{ color: 'var(--t3)', fontSize: 9 }}>(optional for HOD/Admin)</span>}
+              </label>
+              <input className="inpf" type="text" value={form.sgh_id || ''} placeholder="e.g. SGH-12345"
+                onChange={e => setForm(p => ({ ...p, sgh_id: e.target.value }))} />
+            </div>
+
+            {/* Email — required for HOD/admin, optional for staff (added later in profile) */}
+            <div className="ig" style={{ marginBottom: 10 }}>
+              <label className="inplbl">
+                Email Address {form.role !== 'staff' ? <span style={{ color: 'var(--dan)' }}>*</span> : <span style={{ color: 'var(--t3)', fontSize: 9 }}>(optional — staff can add later)</span>}
+              </label>
+              <input className="inpf" type="email" value={form.email || ''} placeholder="name@sghgroup.net"
                 onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
             </div>
 

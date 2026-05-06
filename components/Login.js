@@ -1,39 +1,30 @@
 'use client';
 import { useState } from 'react';
-import { STAFF } from '../lib/data';
 
 export default function Login({ onLogin }) {
-  const [email, setEmail] = useState('sultanalshehri@sghgroup.net');
+  const [username, setUsername] = useState('sultanalshehri@sghgroup.net');
   const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
 
   const go = async () => {
-    if (!email.trim()) { setErr('Please enter your email.'); return; }
+    if (!username.trim()) { setErr('Please enter your SGH ID or email.'); return; }
     setLoading(true);
     setErr('');
     try {
       const r = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password: pass }),
+        body: JSON.stringify({ username: username.trim(), password: pass }),
       });
       if (r.ok) {
         onLogin(await r.json());
         return;
       }
       const result = await r.json();
-      if (r.status === 503) {
-        // Supabase not configured — fall back to demo mode
-        const s = STAFF.find(st => st.email.toLowerCase() === email.toLowerCase().trim());
-        if (s) { onLogin(s); return; }
-      }
       setErr(result.error || 'Sign in failed.');
     } catch {
-      // Network error — demo fallback
-      const s = STAFF.find(st => st.email.toLowerCase() === email.toLowerCase().trim());
-      if (s) { onLogin(s); return; }
       setErr('Unable to connect. Please try again.');
     } finally {
       setLoading(false);
@@ -47,13 +38,13 @@ export default function Login({ onLogin }) {
         <div style={{ textAlign: 'center', fontSize: 34, marginBottom: 10 }}>🫁</div>
         <div className="ll">SAUDI GERMAN HOSPITAL · MEAHCO NETWORK</div>
         <div className="lt">Respiratory Services</div>
-        <div className="lsub">Sign in with your @sghgroup.net account</div>
+        <div className="lsub">Sign in with your SGH ID or @sghgroup.net email</div>
         <div className="ig">
-          <label className="inplbl">Email Address</label>
-          <input className="inpf" type="email" value={email}
-            onChange={e => { setEmail(e.target.value); setErr(''); }}
+          <label className="inplbl">SGH ID or Email</label>
+          <input className="inpf" type="text" value={username}
+            onChange={e => { setUsername(e.target.value); setErr(''); }}
             onKeyDown={e => e.key === 'Enter' && go()}
-            placeholder="name@sghgroup.net" />
+            placeholder="e.g. SGH-12345 or name@sghgroup.net" />
         </div>
         <div className="ig">
           <label className="inplbl">Password</label>
