@@ -61,6 +61,7 @@ export default function App() {
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [forceChangePwd, setForceChangePwd] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [forceEmail, setForceEmail] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1800);
@@ -124,9 +125,16 @@ export default function App() {
     const { BRANCHES: BR } = require('../lib/data');
     const branchesToLoad = u.isAdmin ? BR.map(b => b.id) : [u.branchId];
     branchesToLoad.forEach(bid => loadSchedule(bid));
+    // Staff first-login: force password change, then force email entry
     if (u.forcePasswordChange) {
       setForceChangePwd(true);
       setShowChangePwd(true);
+      // After password, email will be forced (handled in onSuccess)
+      if (!u.isHOD && !u.email) setForceEmail(true);
+    } else if (!u.isHOD && !u.email) {
+      // Staff with no email — force email entry
+      setForceEmail(true);
+      setShowProfile(true);
     }
   };
 
@@ -283,8 +291,13 @@ export default function App() {
       {showProfile && (
         <ProfileModal
           user={user}
-          onClose={() => setShowProfile(false)}
-          onSave={(updated) => { setUser(u => ({ ...u, ...updated })); setShowProfile(false); }}
+          forced={forceEmail}
+          onClose={() => { if (!forceEmail) setShowProfile(false); }}
+          onSave={(updated) => {
+            setUser(u => ({ ...u, ...updated }));
+            setShowProfile(false);
+            setForceEmail(false);
+          }}
         />
       )}
 
@@ -297,6 +310,8 @@ export default function App() {
             setShowChangePwd(false);
             setForceChangePwd(false);
             setUser(u => ({ ...u, forcePasswordChange: false }));
+            // Staff with no email — prompt email right after password change
+            if (forceEmail) setShowProfile(true);
           }}
         />
       )}
@@ -304,12 +319,14 @@ export default function App() {
   );
 }
 
-function ProfileModal({ user, onClose, onSave }) {
+function ProfileModal({ user, forced, onClose, onSave }) {
   const [email, setEmail] = useState(user.email || '');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
 
   const save = async () => {
+    if (forced && !email.trim()) { setMsg('Email is required. Please enter your SGH email address.'); return; }
+    if (email && !email.includes('@')) { setMsg('Please enter a valid email address.'); return; }
     setSaving(true);
     setMsg('');
     try {
@@ -330,7 +347,12 @@ function ProfileModal({ user, onClose, onSave }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: 'var(--sur)', borderRadius: 14, padding: 28, width: 420, maxWidth: '92vw', border: '1px solid var(--bd)', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
-        <div style={{ font: '700 16px var(--sora)', color: 'var(--t)', marginBottom: 18 }}>👤 My Profile</div>
+        <div style={{ font: '700 16px var(--sora)', color: 'var(--t)', marginBottom: 6 }}>👤 My Profile</div>
+        {forced && (
+          <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 11, color: '#92400e' }}>
+            📧 Please enter your SGH email address to complete your account setup.
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16, background: 'var(--sur2)', borderRadius: 9, padding: '12px 14px' }}>
           <div>
@@ -350,7 +372,7 @@ function ProfileModal({ user, onClose, onSave }) {
         </div>
 
         <div className="ig" style={{ marginBottom: 14 }}>
-          <label className="inplbl">Email Address <span style={{ color: 'var(--t3)', fontSize: 9 }}>(optional — used for notifications)</span></label>
+          <label className="inplbl">Email Address {forced ? <span style={{ color: 'var(--dan)' }}>*</span> : <span style={{ color: 'var(--t3)', fontSize: 9 }}>(optional)</span>}</label>
           <input className="inpf" type="email" value={email} placeholder="name@sghgroup.net"
             onChange={e => { setEmail(e.target.value); setMsg(''); }} />
         </div>
@@ -364,8 +386,8 @@ function ProfileModal({ user, onClose, onSave }) {
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button className="btn" onClick={onClose} style={{ background: 'var(--sur2)', color: 'var(--t2)' }}>Cancel</button>
-          <button className="btn" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save Profile'}</button>
+          {!forced && <button className="btn" onClick={onClose} style={{ background: 'var(--sur2)', color: 'var(--t2)' }}>Cancel</button>}
+          <button className="btn" onClick={save} disabled={saving}>{saving ? 'Saving...' : forced ? 'Save & Continue' : 'Save Profile'}</button>
         </div>
       </div>
     </div>
