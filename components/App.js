@@ -98,11 +98,20 @@ export default function App() {
     } catch { /* ignore */ }
   };
 
-  // Load docs from DB
+  // Load docs from DB — normalise snake_case DB columns to camelCase
   const loadDocs = async () => {
     try {
       const r = await fetch('/api/documents');
-      if (r.ok) setDocs(await r.json());
+      if (r.ok) {
+        const raw = await r.json();
+        const mapped = raw.map(d => ({
+          ...d,
+          branchId: d.branch_id ?? d.branchId ?? 'all',
+          fileUrl:  d.file_url  ?? d.fileUrl  ?? null,
+          storagePath: d.storage_path ?? d.storagePath ?? null,
+        }));
+        setDocs(mapped);
+      }
     } catch { /* ignore */ }
   };
 
