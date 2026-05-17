@@ -7,7 +7,8 @@ function getDb() {
 export async function GET() {
   const { data, error } = await getDb()
     .from('app_users')
-    .select('id,email,sgh_id,full_name,role,branch_id,active,created_at')
+    .select('id,email,sgh_id,full_name,role,branch_id,active,created_at,moh_license_url,moh_license_expiry')
+    .eq('is_demo', false)
     .order('created_at');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   return Response.json(data);
@@ -36,8 +37,9 @@ export async function POST(req) {
       branch_id: body.branch_id || 'all',
       active: true,
       force_password_change: true,
+      is_demo: false,
     })
-    .select('id,email,sgh_id,full_name,role,branch_id,active,created_at');
+    .select('id,email,sgh_id,full_name,role,branch_id,active,created_at,moh_license_url,moh_license_expiry');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   return Response.json(data[0]);
 }
@@ -52,7 +54,7 @@ export async function PUT(req) {
     .from('app_users')
     .update(updates)
     .eq('id', id)
-    .select('id,email,sgh_id,full_name,role,branch_id,active,created_at');
+    .select('id,email,sgh_id,full_name,role,branch_id,active,created_at,moh_license_url,moh_license_expiry');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   return Response.json(data[0]);
 }
