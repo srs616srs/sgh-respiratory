@@ -41,7 +41,16 @@ export default function Documents({ docs, setDocs, docAcks, setDocAcks, user, se
       if (json.document) {
         // Reload all docs from DB so all users see the new doc
         const r2 = await fetch('/api/documents');
-        if (r2.ok) setDocs(await r2.json());
+        if (r2.ok) {
+          const raw = await r2.json();
+          // Normalise snake_case DB columns to camelCase
+          setDocs(raw.map(d => ({
+            ...d,
+            branchId:    d.branch_id    ?? d.branchId    ?? 'all',
+            fileUrl:     d.file_url     ?? d.fileUrl     ?? null,
+            storagePath: d.storage_path ?? d.storagePath ?? null,
+          })));
+        }
         setUploadModal(false);
         setSelectedFile(null);
         setNewDoc({ name: '', category: 'Policy', branchId: selBr === 'all' ? 'all' : selBr });
