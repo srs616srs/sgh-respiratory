@@ -4,11 +4,16 @@ import { getBranch, COMPETENCIES } from '../lib/data';
 import { BranchTag } from './App';
 
 export default function Competencies({ compRecs, setCompRecs, selBr, activeBranch, user, staff }) {
-  const [sel, setSel] = useState(null);
+  const [sel, setSel] = useState(user.isHOD ? null : user.id);
   const [uploadingComp, setUploadingComp] = useState(null); // { staffId, compId }
   const fileRef = useRef();
 
-  const sl = staff ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD) : [];
+  // HOD sees all branch staff; staff sees only their own row
+  const sl = staff
+    ? user.isHOD
+      ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD)
+      : staff.filter(s => s.id === user.id)
+    : [];
   const getStaffById = (id) => staff?.find(s => s.id === id);
   const gr = (sid, cid) => compRecs.find(r => r.staffId === sid && r.compId === cid) || { status: 'pending' };
   const ico = s => s === 'completed' ? '✓' : s === 'due' ? '!' : '–';
@@ -63,7 +68,7 @@ export default function Competencies({ compRecs, setCompRecs, selBr, activeBranc
         </div>
       </div>
       <div className="cnt">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 11 }}>
+        {user.isHOD && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 11 }}>
           {sl.map(s => {
             const due = compRecs.filter(r => r.staffId === s.id && r.status === 'due').length;
             const p = pct(s.id);
@@ -87,7 +92,7 @@ export default function Competencies({ compRecs, setCompRecs, selBr, activeBranc
               </div>
             );
           })}
-        </div>
+        </div>}
 
         {sel ? (
           <div className="card">
@@ -129,7 +134,7 @@ export default function Competencies({ compRecs, setCompRecs, selBr, activeBranc
               </tbody>
             </table>
           </div>
-        ) : (
+        ) : user.isHOD ? (
           <div className="card">
             <div className="stitle">Matrix — {selBr === 'all' ? 'All Branches' : activeBranch?.name}</div>
             <div className="mx">

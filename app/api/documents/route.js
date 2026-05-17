@@ -1,6 +1,19 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+function getSb() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  return createClient(url, key);
+}
+
+// GET — fetch all documents from DB
+export async function GET() {
+  const { data, error } = await getSb().from('documents').select('*').order('date', { ascending: false });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data || []);
+}
+
 export async function POST(req) {
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -61,9 +61,9 @@ export default function Meetings({ meetings, setMeetings, user, selBr, activeBra
               <button className="btn out" onClick={() => momFileRef.current?.click()} disabled={uploadingMOM}>
                 {uploadingMOM ? '⏳ Uploading…' : '📎 Upload MOM PDF'}
               </button>
+              <button className="btn pri" onClick={() => setShowAI(true)}>🤖 AI Generate MOM</button>
             </>
           )}
-          <button className="btn pri" onClick={() => setShowAI(true)}>🤖 AI Generate MOM</button>
         </div>
 
         {vis.map(m => {

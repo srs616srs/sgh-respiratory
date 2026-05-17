@@ -28,52 +28,28 @@ export default function Documents({ docs, setDocs, docAcks, setDocAcks, user, se
 
   const handleUpload = async () => {
     if (!newDoc.name.trim()) return alert('Please enter a document name.');
+    if (!selectedFile) return alert('Please select a file to upload.');
     setUploading(true);
-
-    if (selectedFile) {
-      try {
-        const form = new FormData();
-        form.append('file', selectedFile);
-        form.append('folder', 'docs');
-        const uploadRes = await fetch('/api/upload', { method: 'POST', body: form });
-        const uploadJson = await uploadRes.json();
-
-        if (uploadJson.url) {
-          const icons = { Policy: '📋', Protocol: '📄', SOP: '📋', Form: '📝', Checklist: '✅', Guideline: '📘', Competency: '🎯' };
-          const doc = {
-            id: Date.now(), name: newDoc.name, category: newDoc.category, branchId: newDoc.branchId,
-            date: new Date().toISOString().split('T')[0],
-            size: `${Math.round(selectedFile.size / 1024)} KB`,
-            icon: icons[newDoc.category] || '📄',
-            fileUrl: uploadJson.url,
-          };
-          setDocs(p => [doc, ...p]);
-          setUploadModal(false);
-          setSelectedFile(null);
-          setNewDoc({ name: '', category: 'Policy', branchId: selBr === 'all' ? 'all' : selBr });
-          setUploading(false);
-          return;
-        }
-      } catch { /* fall through */ }
-    }
-
-    // Local fallback
-    addLocally();
+    try {
+      const form = new FormData();
+      form.append('file', selectedFile);
+      form.append('name', newDoc.name);
+      form.append('branchId', newDoc.branchId);
+      form.append('category', newDoc.category);
+      const res = await fetch('/api/documents', { method: 'POST', body: form });
+      const json = await res.json();
+      if (json.document) {
+        // Reload all docs from DB so all users see the new doc
+        const r2 = await fetch('/api/documents');
+        if (r2.ok) setDocs(await r2.json());
+        setUploadModal(false);
+        setSelectedFile(null);
+        setNewDoc({ name: '', category: 'Policy', branchId: selBr === 'all' ? 'all' : selBr });
+      } else {
+        alert(json.error || 'Upload failed.');
+      }
+    } catch { alert('Upload failed. Check your connection.'); }
     setUploading(false);
-  };
-
-  const addLocally = () => {
-    const icons = { Policy: '📋', Protocol: '📄', SOP: '📋', Form: '📝', Checklist: '✅', Guideline: '📘', Competency: '🎯' };
-    const sizeStr = selectedFile ? `${Math.round(selectedFile.size / 1024)} KB` : '—';
-    setDocs(p => [{
-      id: Date.now(), name: newDoc.name, category: newDoc.category, branchId: newDoc.branchId,
-      date: new Date().toISOString().split('T')[0], size: sizeStr,
-      icon: icons[newDoc.category] || '📄',
-      fileUrl: selectedFile ? URL.createObjectURL(selectedFile) : null,
-    }, ...p]);
-    setUploadModal(false);
-    setSelectedFile(null);
-    setNewDoc({ name: '', category: 'Policy', branchId: selBr === 'all' ? 'all' : selBr });
   };
 
   return (

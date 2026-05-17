@@ -1,14 +1,20 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { getBranch, certStatus, daysUntil } from '../lib/data';
 import { BranchTag } from './App';
 
 const TYPES = ['BLS', 'ACLS', 'PALS', 'NRP'];
 
 export default function Certificates({ certs, setCerts, selBr, activeBranch, staff, user }) {
-  const [tab, setTab] = useState('certs'); // 'certs' | 'moh'
+  const [tab, setTab] = useState('certs');
   const [addModal, setAddModal] = useState(null);
   const [newCert, setNewCert] = useState({ type: 'BLS', expiryDate: '' });
+  const [certErr, setCertErr] = useState('');
+  // MOH upload
+  const [mohUploading, setMohUploading] = useState(false);
+  const [mohMsg, setMohMsg] = useState('');
+  const [mohExpInput, setMohExpInput] = useState('');
+  const mohFileRef = useRef();
 
   // Staff see only their own row; HOD sees all branch staff
   const sl = staff
@@ -21,26 +27,47 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
   const expC = certs.filter(c => sl.some(s => s.id === c.staffId) && certStatus(c.expiryDate) === 'expired').length;
   const expS = certs.filter(c => sl.some(s => s.id === c.staffId) && certStatus(c.expiryDate) === 'expiring').length;
 
-  // MOH license status helpers
+  // MOH helpers
   const mohStatus = (expiry) => {
     if (!expiry) return 'missing';
     const d = Math.ceil((new Date(expiry) - new Date()) / 86400000);
     return d < 0 ? 'expired' : d <= 90 ? 'expiring' : 'valid';
   };
   const mohDays = (expiry) => expiry ? Math.ceil((new Date(expiry) - new Date()) / 86400000) : null;
-
   const mohMissing = sl.filter(s => !s.mohLicenseUrl).length;
   const mohExpired = sl.filter(s => s.mohLicenseExpiry && mohStatus(s.mohLicenseExpiry) === 'expired').length;
   const mohExpiring = sl.filter(s => s.mohLicenseExpiry && mohStatus(s.mohLicenseExpiry) === 'expiring').length;
 
   const saveCert = () => {
-    if (!newCert.expiryDate) return;
+    if (!newCert.expiryDate) { setCertErr('Expiry date is required.'); return; }
     setCerts(p => {
       const filtered = p.filter(c => !(c.staffId === addModal && c.type === newCert.type));
       return [...filtered, { id: Date.now(), staffId: addModal, type: newCert.type, expiryDate: newCert.expiryDate }];
     });
-    setAddModal(null);
+    setAddModal(null); setCertErr('');
     setNewCert({ type: 'BLS', expiryDate: '' });
+  };
+
+  const uploadMohLicense = async (file) => {
+    if (!mohExpInput) { setMohMsg('⚠ Enter expiry date first.'); return; }
+    setMohUploading(true); setMohMsg('');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('folder', 'moh-licenses');
+      const res = await fetch('/api/upload', { method: 'POST', body: form });
+      const json = await res.json();
+      if (json.url) {
+        const r = await fetch('/api/profile', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: user.id, moh_license_url: json.url, moh_license_expiry: mohExpInput }),
+        });
+        if (r.ok) {
+          setMohMsg('✓ MOH license uploaded. Reload the page to see updated status.');
+        } else setMohMsg('⚠ Upload succeeded but failed to save. Try again.');
+      } else setMohMsg('⚠ Upload failed. Try again.');
+    } catch { setMohMsg('⚠ Error uploading. Check connection.'); }
+    setMohUploading(false);
   };
 
   return (
@@ -52,7 +79,7 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
         </div>
       </div>
       <div className="cnt">
-        {/* Summary alerts */}
+        {/* Alerts banner */}
         {(expC > 0 || expS > 0 || mohExpired > 0 || mohExpiring > 0) && (
           <div className="abanner">
             <span style={{ fontSize: 16 }}>⚠️</span>
@@ -73,16 +100,14 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
               background: tab === 'certs' ? 'var(--a)' : 'var(--sur2)', color: tab === 'certs' ? '#fff' : 'var(--t2)' }}>
             🛡️ Life Support Certs
           </button>
-          {(user.isHOD || !user.isHOD) && (
-            <button onClick={() => setTab('moh')}
-              style={{ padding: '6px 18px', borderRadius: 7, border: '1px solid var(--bd)', cursor: 'pointer', fontFamily: 'var(--sora)', fontSize: 11, fontWeight: tab === 'moh' ? 700 : 400,
-                background: tab === 'moh' ? 'var(--a)' : 'var(--sur2)', color: tab === 'moh' ? '#fff' : 'var(--t2)' }}>
-              🏥 MOH License {user.isHOD && mohMissing > 0 && `(${mohMissing} missing)`}
-            </button>
-          )}
+          <button onClick={() => setTab('moh')}
+            style={{ padding: '6px 18px', borderRadius: 7, border: '1px solid var(--bd)', cursor: 'pointer', fontFamily: 'var(--sora)', fontSize: 11, fontWeight: tab === 'moh' ? 700 : 400,
+              background: tab === 'moh' ? 'var(--a)' : 'var(--sur2)', color: tab === 'moh' ? '#fff' : 'var(--t2)' }}>
+            🏥 MOH License {user.isHOD && mohMissing > 0 ? `(${mohMissing} missing)` : ''}
+          </button>
         </div>
 
-        {/* ── Life Support Certs Tab ── */}
+        {/* ── Life Support Certs ── */}
         {tab === 'certs' && (
           <div className="card">
             <div className="tw">
@@ -107,7 +132,7 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
                           </td>
                         );
                       })}
-                      <td><button className="btn out sm" onClick={() => setAddModal(s.id)}>+ Update</button></td>
+                      <td><button className="btn out sm" onClick={() => { setAddModal(s.id); setCertErr(''); }}>+ Update</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -120,13 +145,12 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
         {tab === 'moh' && (
           <div className="card">
             {user.isHOD ? (
-              // HOD/Admin: see all staff MOH status
+              // HOD/Admin: table view of all staff
               <div className="tw">
                 <table>
                   <thead>
                     <tr>
-                      <th>Staff</th>
-                      <th>Branch</th>
+                      <th>Staff</th><th>Branch</th>
                       <th style={{ textAlign: 'center' }}>MOH License</th>
                       <th style={{ textAlign: 'center' }}>Expiry</th>
                       <th style={{ textAlign: 'center' }}>Status</th>
@@ -146,23 +170,16 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
                               ? <a href={s.mohLicenseUrl} target="_blank" rel="noreferrer" style={{ fontSize: 10.5, color: 'var(--a)', fontWeight: 600, textDecoration: 'none' }}>📄 View PDF</a>
                               : <span style={{ fontSize: 10.5, color: 'var(--t3)' }}>—</span>}
                           </td>
-                          <td style={{ textAlign: 'center', fontSize: 10.5, color: 'var(--t2)' }}>
-                            {s.mohLicenseExpiry || '—'}
-                          </td>
+                          <td style={{ textAlign: 'center', fontSize: 10.5, color: 'var(--t2)' }}>{s.mohLicenseExpiry || '—'}</td>
                           <td style={{ textAlign: 'center' }}>
                             {!s.mohLicenseUrl
                               ? <span className="ratio-badge ratio-bad">Not Submitted</span>
-                              : !s.mohLicenseExpiry
-                              ? <span className="ratio-badge ratio-warn">No Expiry</span>
-                              : st === 'expired'
-                              ? <span className="ratio-badge ratio-bad">Expired {Math.abs(days)}d ago</span>
-                              : st === 'expiring'
-                              ? <span className="ratio-badge ratio-warn">Exp. in {days}d</span>
+                              : !s.mohLicenseExpiry ? <span className="ratio-badge ratio-warn">No Expiry</span>
+                              : st === 'expired' ? <span className="ratio-badge ratio-bad">Expired {Math.abs(days)}d ago</span>
+                              : st === 'expiring' ? <span className="ratio-badge ratio-warn">Exp. in {days}d</span>
                               : <span className="ratio-badge ratio-ok">Valid · {days}d</span>}
                           </td>
-                          <td>
-                            <span style={{ fontSize: 9.5, color: 'var(--t3)' }}>Staff uploads via Profile</span>
-                          </td>
+                          <td style={{ fontSize: 9.5, color: 'var(--t3)' }}>Staff uploads via Certificates</td>
                         </tr>
                       );
                     })}
@@ -173,27 +190,25 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
                 </table>
               </div>
             ) : (
-              // Staff: see only their own MOH status + link to upload
-              <div>
+              // Staff: own status + upload form
+              <div style={{ padding: 20 }}>
+                <div style={{ font: '600 13px var(--sora)', color: 'var(--t)', marginBottom: 16 }}>🏥 My MOH License</div>
                 {(() => {
                   const me = sl[0];
                   if (!me) return null;
                   const st = mohStatus(me.mohLicenseExpiry);
                   const days = mohDays(me.mohLicenseExpiry);
                   return (
-                    <div style={{ padding: 20 }}>
-                      <div style={{ font: '600 13px var(--sora)', color: 'var(--t)', marginBottom: 16 }}>🏥 My MOH License</div>
-                      {me.mohLicenseUrl ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--sur2)', borderRadius: 10, padding: '14px 18px', marginBottom: 14 }}>
+                    <>
+                      {me.mohLicenseUrl && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--sur2)', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
                           <span style={{ fontSize: 28 }}>📄</span>
                           <div style={{ flex: 1 }}>
                             <a href={me.mohLicenseUrl} target="_blank" rel="noreferrer"
                               style={{ fontSize: 13, fontWeight: 700, color: 'var(--a)', textDecoration: 'none' }}>
-                              View My MOH License ↗
+                              View Current License ↗
                             </a>
-                            <div style={{ fontSize: 11, color: 'var(--t2)', marginTop: 3 }}>
-                              Expiry: {me.mohLicenseExpiry || 'Not set'}
-                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--t2)', marginTop: 3 }}>Expiry: {me.mohLicenseExpiry || 'Not set'}</div>
                           </div>
                           {me.mohLicenseExpiry && (
                             <span className={`ratio-badge ${st === 'expired' ? 'ratio-bad' : st === 'expiring' ? 'ratio-warn' : 'ratio-ok'}`}>
@@ -201,16 +216,45 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
                             </span>
                           )}
                         </div>
-                      ) : (
-                        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '14px 18px', marginBottom: 14 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: '#c2410c', marginBottom: 6 }}>⚠ MOH License Not Submitted</div>
-                          <div style={{ fontSize: 11, color: '#9a3412' }}>Please upload your MOH license PDF and expiry date in your Profile.</div>
+                      )}
+                      {!me.mohLicenseUrl && (
+                        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#c2410c' }}>⚠ MOH License Not Submitted</div>
+                          <div style={{ fontSize: 11, color: '#9a3412', marginTop: 3 }}>Upload your MOH license PDF and expiry date below.</div>
                         </div>
                       )}
-                      <div style={{ fontSize: 11, color: 'var(--t3)', background: 'var(--sur2)', borderRadius: 8, padding: '10px 14px' }}>
-                        💡 To upload or update your MOH license, click <strong>👤 Profile</strong> in the sidebar.
+                      {/* Upload form */}
+                      <div style={{ background: 'var(--sur2)', borderRadius: 10, padding: '16px 18px', border: '1px solid var(--bd)' }}>
+                        <div style={{ font: '600 11px var(--sora)', color: 'var(--t)', marginBottom: 12 }}>
+                          {me.mohLicenseUrl ? '🔄 Update MOH License' : '⬆ Upload MOH License'}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                          <div className="ig" style={{ marginBottom: 0 }}>
+                            <label className="inplbl">Expiry Date <span style={{ color: 'var(--dan)' }}>*</span></label>
+                            <input className="inpf" type="date" value={mohExpInput}
+                              onChange={e => { setMohExpInput(e.target.value); setMohMsg(''); }} />
+                          </div>
+                          <div className="ig" style={{ marginBottom: 0 }}>
+                            <label className="inplbl">License PDF <span style={{ color: 'var(--dan)' }}>*</span></label>
+                            <input type="file" accept=".pdf" ref={mohFileRef} style={{ display: 'none' }}
+                              onChange={e => { if (e.target.files[0]) uploadMohLicense(e.target.files[0]); }} />
+                            <button className="btn" style={{ width: '100%', fontSize: 11 }}
+                              onClick={() => { if (!mohExpInput) { setMohMsg('⚠ Enter expiry date first.'); return; } mohFileRef.current?.click(); }}
+                              disabled={mohUploading}>
+                              {mohUploading ? '⏳ Uploading…' : '📎 Choose PDF'}
+                            </button>
+                          </div>
+                        </div>
+                        {mohMsg && (
+                          <div style={{ fontSize: 10.5, padding: '7px 10px', borderRadius: 6,
+                            background: mohMsg.startsWith('✓') ? '#dcfce7' : '#fff7ed',
+                            color: mohMsg.startsWith('✓') ? '#166534' : '#c2410c',
+                            border: `1px solid ${mohMsg.startsWith('✓') ? '#86efac' : '#fed7aa'}` }}>
+                            {mohMsg}
+                          </div>
+                        )}
                       </div>
-                    </div>
+                    </>
                   );
                 })()}
               </div>
@@ -219,6 +263,7 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
         )}
       </div>
 
+      {/* Update cert modal */}
       {addModal && (
         <div className="ov" onClick={() => setAddModal(null)}>
           <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
@@ -231,9 +276,11 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
               </select>
             </div>
             <div className="ig">
-              <label className="inplbl">Expiry Date</label>
-              <input className="inpf" type="date" value={newCert.expiryDate} onChange={e => setNewCert(p => ({ ...p, expiryDate: e.target.value }))} />
+              <label className="inplbl">Expiry Date <span style={{ color: 'var(--dan)' }}>*</span></label>
+              <input className="inpf" type="date" value={newCert.expiryDate}
+                onChange={e => { setNewCert(p => ({ ...p, expiryDate: e.target.value })); setCertErr(''); }} />
             </div>
+            {certErr && <div style={{ fontSize: 11, color: '#991b1b', marginBottom: 8 }}>⚠ {certErr}</div>}
             <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end' }}>
               <button className="btn out" onClick={() => setAddModal(null)}>Cancel</button>
               <button className="btn pri" onClick={saveCert}>Save Certificate</button>

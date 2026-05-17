@@ -13,12 +13,16 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
   const [newZoneName, setNewZoneName] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Shift swap
+  const [swapRequests, setSwapRequests] = useState([]);
+  const [swapForm, setSwapForm] = useState({ date: '', myShift: 'D', targetStaff: '', theirShift: 'O', notes: '' });
+  const [swapSubmitted, setSwapSubmitted] = useState(false);
 
   // HODs always see only their own branch staff; admins see by selBr
   const effectiveBranch = user.isAdmin ? selBr : user.branchId;
   const sl = staff ? staff.filter(s => (effectiveBranch === 'all' || s.branchId === effectiveBranch) && !s.isHOD) : [];
-  // HOD can only edit their own branch; admin can edit any
-  const canEdit = user.isAdmin || selBr === user.branchId;
+  // Only HOD/admin can edit schedules — staff is always read-only
+  const canEdit = user.isHOD && (user.isAdmin || selBr === user.branchId);
   const getStaffById = (id) => staff?.find(s => s.id === id);
   const getMeta = (sid) => staffMeta.find(m => m.staffId === sid) || {};
   const expiring90 = staffMeta.filter(m => {
@@ -114,7 +118,9 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
     setNewVac({ staffId: '', start: '', end: '', type: 'Annual', days: 0, status: 'pending' });
   };
 
-  const TABS = ['📋 Overview', '📅 Schedule', '🏖️ Vacations', '🟢 Active Duty', '📁 Staff Folders'];
+  const TABS = user.isHOD
+    ? ['📋 Overview', '📅 Schedule', '🏖️ Vacations', '🟢 Active Duty', '📁 Staff Folders']
+    : ['📅 Schedule', '🟢 Active Duty', '🔄 Shift Swap'];
 
   return (
     <>
@@ -142,7 +148,8 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
 
         <div className="tabs">{TABS.map((t, i) => <div key={i} className={`tab ${tab === i ? 'act' : ''}`} onClick={() => setTab(i)}>{t}</div>)}</div>
 
-        {tab === 0 && (
+        {/* HOD: Overview tab (index 0) */}
+        {user.isHOD && tab === 0 && (
           <div className="card"><div className="tw"><table>
             <thead><tr><th>Name</th><th>Branch</th><th>Role</th><th>Contract End</th><th>Status</th></tr></thead>
             <tbody>{sl.map(s => {
@@ -161,7 +168,8 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
           </table></div></div>
         )}
 
-        {tab === 1 && (
+        {/* Schedule tab: HOD=1, Staff=0 */}
+        {(user.isHOD ? tab === 1 : tab === 0) && (
           <div>
             {/* Zone management */}
             <div className="card" style={{ marginBottom: 12 }}>
@@ -248,7 +256,8 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
           </div>
         )}
 
-        {tab === 2 && (
+        {/* Vacations tab: HOD only (index 2) */}
+        {user.isHOD && tab === 2 && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 11 }}>
               <div className="stitle" style={{ margin: 0 }}>Vacation Planner</div>
@@ -282,7 +291,8 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
           </div>
         )}
 
-        {tab === 3 && (
+        {/* Active Duty: HOD=3, Staff=1 */}
+        {(user.isHOD ? tab === 3 : tab === 1) && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 13 }}>
               <div className="stitle" style={{ margin: 0 }}>Active Duty Status — Today</div>
@@ -343,7 +353,8 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
           </div>
         )}
 
-        {tab === 4 && (
+        {/* Staff Folders: HOD only (index 4) */}
+        {user.isHOD && tab === 4 && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 11 }}>
               <div className="stitle" style={{ margin: 0 }}>Staff Personal Folders</div>
@@ -403,6 +414,118 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
           </div>
         </div>
       )}
+
+        {/* Shift Swap tab: Staff only (index 2) */}
+        {!user.isHOD && tab === 2 && (
+          <div>
+            <div className="card" style={{ marginBottom: 12 }}>
+              <div style={{ font: '600 12px var(--sora)', color: 'var(--t)', marginBottom: 12 }}>🔄 Request Shift Swap</div>
+              <div style={{ fontSize: 10.5, color: 'var(--t2)', marginBottom: 14, lineHeight: 1.6 }}>
+                Request to swap a shift with another staff member from your branch. Your HOD will be notified for approval.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                <div className="ig" style={{ marginBottom: 0 }}>
+                  <label className="inplbl">Date</label>
+                  <input className="inpf" type="date" value={swapForm.date}
+                    onChange={e => setSwapForm(p => ({ ...p, date: e.target.value }))} />
+                </div>
+                <div className="ig" style={{ marginBottom: 0 }}>
+                  <label className="inplbl">My Shift on That Day</label>
+                  <select className="inpf" value={swapForm.myShift}
+                    onChange={e => setSwapForm(p => ({ ...p, myShift: e.target.value }))}>
+                    <option value="D">Day (ON → OFF)</option>
+                    <option value="N">Night (ON → OFF)</option>
+                    <option value="O">Off (OFF → ON)</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                <div className="ig" style={{ marginBottom: 0 }}>
+                  <label className="inplbl">Covering Staff</label>
+                  <select className="inpf" value={swapForm.targetStaff}
+                    onChange={e => setSwapForm(p => ({ ...p, targetStaff: e.target.value }))}>
+                    <option value="">Select staff member…</option>
+                    {sl.filter(s => s.id !== user.id).map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="ig" style={{ marginBottom: 0 }}>
+                  <label className="inplbl">Their Shift on That Day</label>
+                  <select className="inpf" value={swapForm.theirShift}
+                    onChange={e => setSwapForm(p => ({ ...p, theirShift: e.target.value }))}>
+                    <option value="D">Day (ON → OFF)</option>
+                    <option value="N">Night (ON → OFF)</option>
+                    <option value="O">Off (OFF → ON)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="ig" style={{ marginBottom: 12 }}>
+                <label className="inplbl">Notes (optional)</label>
+                <input className="inpf" value={swapForm.notes} placeholder="e.g. Family emergency, medical appointment…"
+                  onChange={e => setSwapForm(p => ({ ...p, notes: e.target.value }))} />
+              </div>
+              {swapSubmitted && (
+                <div style={{ background: '#dcfce7', border: '1px solid #86efac', borderRadius: 7, padding: '8px 12px', marginBottom: 10, fontSize: 11, color: '#166534', fontWeight: 600 }}>
+                  ✓ Swap request submitted — your HOD has been notified.
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="btn pri"
+                  disabled={!swapForm.date || !swapForm.targetStaff}
+                  onClick={() => {
+                    const coveringStaff = sl.find(s => s.id === swapForm.targetStaff);
+                    const shiftLabel = { D: 'Day', N: 'Night', O: 'Off' };
+                    setSwapRequests(p => [...p, {
+                      id: Date.now(),
+                      requesterId: user.id, requesterName: user.name,
+                      targetId: swapForm.targetStaff, targetName: coveringStaff?.name,
+                      date: swapForm.date,
+                      myShift: swapForm.myShift, theirShift: swapForm.theirShift,
+                      notes: swapForm.notes, status: 'pending',
+                      branchId: user.branchId, createdAt: new Date().toISOString(),
+                    }]);
+                    setSwapForm({ date: '', myShift: 'D', targetStaff: '', theirShift: 'O', notes: '' });
+                    setSwapSubmitted(true);
+                    setTimeout(() => setSwapSubmitted(false), 4000);
+                  }}>
+                  📩 Submit Swap Request
+                </button>
+              </div>
+            </div>
+
+            {/* My swap requests history */}
+            {swapRequests.filter(r => r.requesterId === user.id).length > 0 && (
+              <div className="card">
+                <div style={{ font: '600 11px var(--sora)', color: 'var(--t)', marginBottom: 10 }}>My Swap Requests</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {swapRequests.filter(r => r.requesterId === user.id).reverse().map(r => {
+                    const shiftLabel = { D: 'Day', N: 'Night', O: 'Off' };
+                    const statusStyle = r.status === 'approved' ? { bg: '#dcfce7', color: '#166534', border: '#86efac' }
+                      : r.status === 'rejected' ? { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' }
+                      : { bg: '#fef9c3', color: '#854d0e', border: '#fde047' };
+                    return (
+                      <div key={r.id} style={{ background: statusStyle.bg, border: `1px solid ${statusStyle.border}`, borderRadius: 8, padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: statusStyle.color }}>📅 {r.date}</span>
+                          <span className={`ratio-badge ${r.status === 'approved' ? 'ratio-ok' : r.status === 'rejected' ? 'ratio-bad' : 'ratio-warn'}`}>
+                            {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 10.5, color: statusStyle.color }}>
+                          My {shiftLabel[r.myShift]} → swap with {r.targetName}'s {shiftLabel[r.theirShift]} shift
+                        </div>
+                        {r.notes && <div style={{ fontSize: 10, color: statusStyle.color, marginTop: 3, fontStyle: 'italic' }}>{r.notes}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* HOD pending swaps (shown to HOD in their own view — not staff) */}
+          </div>
+        )}
 
       {vacModal && (
         <div className="ov" onClick={() => setVacModal(false)}>

@@ -98,6 +98,14 @@ export default function App() {
     } catch { /* ignore */ }
   };
 
+  // Load docs from DB
+  const loadDocs = async () => {
+    try {
+      const r = await fetch('/api/documents');
+      if (r.ok) setDocs(await r.json());
+    } catch { /* ignore */ }
+  };
+
   // Load courses from DB
   const loadCourses = async () => {
     try {
@@ -143,6 +151,7 @@ export default function App() {
     setUser(u);
     setSelBr(u.isHOD ? 'all' : u.branchId);
     loadStaff();
+    loadDocs();
     loadCourses();
     loadQuizzes();
     // Load schedules — all branches for admin, own branch for HOD/staff
@@ -364,66 +373,34 @@ export default function App() {
 
 function ProfileModal({ user, forced, onClose, onSave }) {
   const [email, setEmail] = useState(user.email || '');
-  const [mohFile, setMohFile] = useState(null);
-  const [mohExpiry, setMohExpiry] = useState(user.mohLicenseExpiry || '');
-  const [mohUrl, setMohUrl] = useState(user.mohLicenseUrl || '');
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState('');
-  const fileRef = useRef();
-
-  const uploadMoh = async (file) => {
-    setUploading(true);
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      form.append('folder', 'moh-licenses');
-      const res = await fetch('/api/upload', { method: 'POST', body: form });
-      const json = await res.json();
-      if (json.url) { setMohUrl(json.url); setMsg('✓ MOH license uploaded.'); }
-      else setMsg('Upload failed. Try again.');
-    } catch { setMsg('Upload error. Try again.'); }
-    setUploading(false);
-  };
 
   const save = async () => {
     if (forced && !email.trim()) { setMsg('Email is required. Please enter your SGH email address.'); return; }
     if (email && !email.includes('@')) { setMsg('Please enter a valid email address.'); return; }
-    setSaving(true);
-    setMsg('');
+    setSaving(true); setMsg('');
     try {
       const r = await fetch('/api/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: user.id,
-          email: email.trim() || null,
-          moh_license_url: mohUrl || null,
-          moh_license_expiry: mohExpiry || null,
-        }),
+        body: JSON.stringify({ id: user.id, email: email.trim() || null }),
       });
       const result = await r.json();
       if (!r.ok) { setMsg(result.error || 'Failed to save.'); setSaving(false); return; }
-      onSave({ email: result.email, mohLicenseUrl: result.moh_license_url, mohLicenseExpiry: result.moh_license_expiry });
-    } catch {
-      setMsg('Server error. Try again.');
-      setSaving(false);
-    }
+      onSave({ email: result.email });
+    } catch { setMsg('Server error. Try again.'); setSaving(false); }
   };
-
-  const mohDays = mohExpiry ? Math.ceil((new Date(mohExpiry) - new Date()) / 86400000) : null;
-  const mohStatus = mohDays === null ? null : mohDays < 0 ? 'expired' : mohDays <= 90 ? 'expiring' : 'valid';
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--sur)', borderRadius: 14, padding: 28, width: 460, maxWidth: '92vw', border: '1px solid var(--bd)', boxShadow: '0 20px 60px rgba(0,0,0,.3)', maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ background: 'var(--sur)', borderRadius: 14, padding: 28, width: 420, maxWidth: '92vw', border: '1px solid var(--bd)', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
         <div style={{ font: '700 16px var(--sora)', color: 'var(--t)', marginBottom: 6 }}>👤 My Profile</div>
         {forced && (
           <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 11, color: '#92400e' }}>
             📧 Please enter your SGH email address to complete your account setup.
           </div>
         )}
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16, background: 'var(--sur2)', borderRadius: 9, padding: '12px 14px' }}>
           <div>
             <div style={{ fontSize: 9, color: 'var(--t3)', fontWeight: 600, marginBottom: 3 }}>FULL NAME</div>
@@ -440,64 +417,19 @@ function ProfileModal({ user, forced, onClose, onSave }) {
             <div style={{ fontSize: 11, color: 'var(--t2)' }}>{user.role}</div>
           </div>
         </div>
-
         <div className="ig" style={{ marginBottom: 14 }}>
           <label className="inplbl">Email Address {forced ? <span style={{ color: 'var(--dan)' }}>*</span> : <span style={{ color: 'var(--t3)', fontSize: 9 }}>(optional)</span>}</label>
           <input className="inpf" type="email" value={email} placeholder="name@sghgroup.net"
             onChange={e => { setEmail(e.target.value); setMsg(''); }} />
         </div>
-
-        {/* MOH License Section */}
-        <div style={{ borderTop: '1px solid var(--bd)', paddingTop: 14, marginBottom: 14 }}>
-          <div style={{ font: '600 11px var(--sora)', color: 'var(--t)', marginBottom: 10 }}>🏥 MOH License</div>
-
-          {/* Current license status */}
-          {mohUrl && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, background: 'var(--sur2)', borderRadius: 8, padding: '8px 12px' }}>
-              <span style={{ fontSize: 14 }}>📄</span>
-              <div style={{ flex: 1 }}>
-                <a href={mohUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--a)', fontWeight: 600, textDecoration: 'none' }}>View Current License ↗</a>
-                {mohStatus && (
-                  <div style={{ fontSize: 10, marginTop: 2,
-                    color: mohStatus === 'expired' ? '#991b1b' : mohStatus === 'expiring' ? '#b45309' : '#166534' }}>
-                    {mohStatus === 'expired' ? `⚠ Expired ${Math.abs(mohDays)} days ago`
-                      : mohStatus === 'expiring' ? `⚠ Expires in ${mohDays} days`
-                      : `✓ Valid · ${mohDays} days remaining`}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-            <div className="ig" style={{ marginBottom: 0 }}>
-              <label className="inplbl">Upload License PDF</label>
-              <input type="file" accept=".pdf" ref={fileRef} style={{ display: 'none' }}
-                onChange={e => { if (e.target.files[0]) { setMohFile(e.target.files[0]); uploadMoh(e.target.files[0]); } }} />
-              <button className="btn" style={{ width: '100%', justifyContent: 'center', fontSize: 11 }}
-                onClick={() => fileRef?.current?.click()} disabled={uploading}>
-                {uploading ? '⏳ Uploading…' : mohFile ? `📄 ${mohFile.name.slice(0, 18)}…` : '📎 Choose PDF'}
-              </button>
-            </div>
-            <div className="ig" style={{ marginBottom: 0 }}>
-              <label className="inplbl">Expiry Date</label>
-              <input className="inpf" type="date" value={mohExpiry}
-                onChange={e => { setMohExpiry(e.target.value); setMsg(''); }} />
-            </div>
-          </div>
-        </div>
-
         {msg && (
           <div style={{ marginBottom: 12, fontSize: 11, padding: '8px 12px', borderRadius: 7,
             background: msg.startsWith('✓') ? '#dcfce7' : '#fee2e2',
-            color: msg.startsWith('✓') ? '#166534' : '#991b1b' }}>
-            {msg}
-          </div>
+            color: msg.startsWith('✓') ? '#166534' : '#991b1b' }}>{msg}</div>
         )}
-
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           {!forced && <button className="btn" onClick={onClose} style={{ background: 'var(--sur2)', color: 'var(--t2)' }}>Cancel</button>}
-          <button className="btn" onClick={save} disabled={saving || uploading}>{saving ? 'Saving...' : forced ? 'Save & Continue' : 'Save Profile'}</button>
+          <button className="btn" onClick={save} disabled={saving}>{saving ? 'Saving...' : forced ? 'Save & Continue' : 'Save Profile'}</button>
         </div>
       </div>
     </div>
