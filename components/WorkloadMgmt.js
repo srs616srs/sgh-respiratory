@@ -15,7 +15,7 @@ export default function WorkloadMgmt({ workload, setWorkload, coverage, staffMet
   };
 
   const branches = selBr === 'all' ? BRANCHES : [BRANCHES.find(b => b.id === selBr)].filter(Boolean);
-  const CC_AREAS = ['aicu', 'picu', 'nicu', 'imicu'];
+  const CC_AREAS = ['aicu', 'picu', 'nicu', 'sicu', 'imcu', 'ccu', 'er'];
 
   const getRatio = (bid) => {
     const activeStaff = staffMeta.filter(m => getStaff(m.staffId)?.branchId === bid && m.onDuty).length;
@@ -39,7 +39,7 @@ export default function WorkloadMgmt({ workload, setWorkload, coverage, staffMet
       <div className="cnt">
         {branches.map(br => {
           const ratioData = getRatio(br.id);
-          const activeCovArea = AREAS_LIST.filter(a => coverage[br.id]?.[a.id] && ['aicu', 'picu', 'nicu', 'imicu', 'generalWards'].includes(a.id));
+          const activeCovArea = AREAS_LIST.filter(a => coverage[br.id]?.[a.id] && ['aicu', 'picu', 'nicu', 'sicu', 'imcu', 'ccu', 'ltc', 'er'].includes(a.id));
           const totalVent = activeCovArea.reduce((s, a) => s + (workload[br.id]?.[a.id]?.vent || 0), 0);
           const totalBeds = activeCovArea.reduce((s, a) => s + (workload[br.id]?.[a.id]?.beds || 0), 0);
           return (
