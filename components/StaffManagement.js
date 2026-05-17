@@ -18,9 +18,9 @@ export default function StaffManagement({ staffMeta, setStaffMeta, vacations, se
   const [swapForm, setSwapForm] = useState({ date: '', myShift: 'D', targetStaff: '', theirShift: 'O', notes: '' });
   const [swapSubmitted, setSwapSubmitted] = useState(false);
 
-  // HODs always see only their own branch staff; admins see by selBr
+  // HODs always see only their own branch staff; admins see by selBr; demo accounts excluded from lists
   const effectiveBranch = user.isAdmin ? selBr : user.branchId;
-  const sl = staff ? staff.filter(s => (effectiveBranch === 'all' || s.branchId === effectiveBranch) && !s.isHOD) : [];
+  const sl = staff ? staff.filter(s => (effectiveBranch === 'all' || s.branchId === effectiveBranch) && !s.isHOD && !s.isDemo) : [];
   // Only HOD/admin can edit schedules — staff is always read-only
   const canEdit = user.isHOD && (user.isAdmin || selBr === user.branchId);
   const getStaffById = (id) => staff?.find(s => s.id === id);

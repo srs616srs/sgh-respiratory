@@ -16,10 +16,10 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
   const [mohExpInput, setMohExpInput] = useState('');
   const mohFileRef = useRef();
 
-  // Staff see only their own row; HOD sees all branch staff
+  // Staff see only their own row; HOD sees all branch staff (demo accounts excluded from HOD view)
   const sl = staff
     ? user.isHOD
-      ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD)
+      ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD && !s.isDemo)
       : staff.filter(s => s.id === user.id)
     : [];
 

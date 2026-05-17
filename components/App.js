@@ -128,7 +128,7 @@ export default function App() {
       const r = await fetch('/api/admin/users');
       if (r.ok) {
         const all = await r.json();
-        // Map DB users to staff format
+        // Map DB users to staff format (include demo accounts so demo users can see their own data)
         const mapped = all.filter(u => u.active).map(u => ({
           id: u.id,
           name: u.full_name,
@@ -138,6 +138,7 @@ export default function App() {
           branchId: u.branch_id,
           isHOD: u.role === 'admin' || u.role === 'hod',
           isAdmin: u.role === 'admin',
+          isDemo: u.is_demo || false,
           avatar: u.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
           mohLicenseUrl: u.moh_license_url || null,
           mohLicenseExpiry: u.moh_license_expiry || null,

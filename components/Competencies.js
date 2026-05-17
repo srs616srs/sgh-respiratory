@@ -8,10 +8,10 @@ export default function Competencies({ compRecs, setCompRecs, selBr, activeBranc
   const [uploadingComp, setUploadingComp] = useState(null); // { staffId, compId }
   const fileRef = useRef();
 
-  // HOD sees all branch staff; staff sees only their own row
+  // HOD sees all branch staff (excluding demo accounts); staff sees only their own row
   const sl = staff
     ? user.isHOD
-      ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD)
+      ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD && !s.isDemo)
       : staff.filter(s => s.id === user.id)
     : [];
   const getStaffById = (id) => staff?.find(s => s.id === id);
@@ -158,7 +158,7 @@ export default function Competencies({ compRecs, setCompRecs, selBr, activeBranc
               </table>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </>
   );

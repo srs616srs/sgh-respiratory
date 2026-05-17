@@ -7,8 +7,7 @@ function getDb() {
 export async function GET() {
   const { data, error } = await getDb()
     .from('app_users')
-    .select('id,email,sgh_id,full_name,role,branch_id,active,created_at,moh_license_url,moh_license_expiry')
-    .eq('is_demo', false)
+    .select('id,email,sgh_id,full_name,role,branch_id,active,created_at,moh_license_url,moh_license_expiry,is_demo')
     .order('created_at');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   return Response.json(data);

@@ -35,7 +35,9 @@ export default function AdminPanel({ user, onStaffChange }) {
     const r = await fetch('/api/admin/users');
     if (r.ok) {
       const all = await r.json();
-      setUsers(isAdmin ? all : all.filter(u => u.branch_id === user.branchId));
+      // Exclude demo accounts from the admin panel display
+      const real = all.filter(u => !u.is_demo);
+      setUsers(isAdmin ? real : real.filter(u => u.branch_id === user.branchId));
     }
     setLoading(false);
     if (onStaffChange) onStaffChange();
