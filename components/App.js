@@ -19,6 +19,7 @@ import AreasCoverage from './AreasCoverage';
 import WorkloadMgmt from './WorkloadMgmt';
 import LogisticsMgmt from './LogisticsMgmt';
 import AdminPanel from './AdminPanel';
+import VacationPlanner from './VacationPlanner';
 
 function BranchTag({ br }) {
   if (!br) return null;
@@ -58,6 +59,7 @@ export default function App() {
   const [docAcks, setDocAcks] = useState(INIT_DOC_ACKS);
   const [logisticsTypes, setLogisticsTypes] = useState(INIT_LOGISTICS_TYPES);
   const [quizzes, setQuizzes] = useState([]);
+  const [vacationRequests, setVacationRequests] = useState([]);
   // UI state
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [forceChangePwd, setForceChangePwd] = useState(false);
@@ -187,6 +189,11 @@ export default function App() {
     r.status === 'pending' && (user?.isAdmin || r.branchId === user?.branchId)
   );
 
+  // Pending vacation requests for HOD
+  const pendingVacations = vacationRequests.filter(r =>
+    r.status === 'pending' && (user?.isAdmin || r.branch_id === user?.branchId)
+  );
+
   // MOH license expiry alerts (within 90 days)
   const mohAlerts = staff.filter(s => {
     if (!s.mohLicenseExpiry) return false;
@@ -217,6 +224,7 @@ export default function App() {
     { id: 'competencies',  ico: '✓',  label: 'Competencies', badge: dueCnt || null },
     { id: 'training',      ico: '🎓', label: 'Training', badge: user.isHOD && pendingRequests.length ? pendingRequests.length : null },
     { id: 'meetings',      ico: '💬', label: 'Meetings' },
+    { id: 'vacations',     ico: '🏖️', label: 'Vacation Planner', badge: user.isHOD && pendingVacations.length ? pendingVacations.length : null },
   ];
   const adminNav = [
     { id: 'staffmgmt', ico: '👥', label: 'Staff Management', badge: expContracts.length || null },
@@ -238,6 +246,7 @@ export default function App() {
     logisticsTypes, setLogisticsTypes,
     quizzes, setQuizzes, loadQuizzes,
     loadCourses, mohAlerts,
+    vacationRequests, setVacationRequests,
     user, selBr, activeBranch,
   };
 
@@ -313,6 +322,7 @@ export default function App() {
         {view === 'competencies' && <Competencies {...sh} />}
         {view === 'training'     && <Training     {...sh} pendingRequests={pendingRequests} />}
         {view === 'meetings'     && <Meetings     {...sh} />}
+        {view === 'vacations'    && <VacationPlanner {...sh} />}
         {view === 'staffmgmt'    && <StaffManagement {...sh} />}
         {view === 'coverage'     && <AreasCoverage   {...sh} />}
         {view === 'workload'     && <WorkloadMgmt    {...sh} />}
