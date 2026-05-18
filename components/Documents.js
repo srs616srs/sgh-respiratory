@@ -26,6 +26,23 @@ export default function Documents({ docs, setDocs, docAcks, setDocAcks, user, se
     }
   };
 
+  const handleDelete = async (doc) => {
+    if (!confirm(`Delete "${doc.name}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch('/api/documents', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: doc.id, storagePath: doc.storagePath || doc.storage_path }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setDocs(p => p.filter(d => d.id !== doc.id));
+      } else {
+        alert(json.error || 'Delete failed.');
+      }
+    } catch { alert('Delete failed. Check your connection.'); }
+  };
+
   const handleUpload = async () => {
     if (!newDoc.name.trim()) return alert('Please enter a document name.');
     if (!selectedFile) return alert('Please select a file to upload.');
@@ -97,7 +114,7 @@ export default function Documents({ docs, setDocs, docAcks, setDocAcks, user, se
                       <td style={{ fontSize: 10.5 }}>{d.date}</td>
                       <td style={{ fontFamily: 'monospace', fontSize: 10.5, color: 'var(--t3)' }}>{d.size}</td>
                       <td>
-                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
                           {d.fileUrl
                             ? <a href={d.fileUrl} target="_blank" rel="noreferrer" className="btn out sm" style={{ textDecoration: 'none' }}>⬇ Download</a>
                             : <span style={{ fontSize: 10, color: 'var(--t3)' }}>No file</span>}
@@ -108,6 +125,12 @@ export default function Documents({ docs, setDocs, docAcks, setDocAcks, user, se
                                   style={{ fontSize: 10, padding: '3px 8px', background: '#e0f2fe', color: '#075985', border: '1px solid #7dd3fc', borderRadius: 5, cursor: 'pointer', fontFamily: 'var(--sora)', fontWeight: 600 }}>
                                   ✍ Acknowledge
                                 </button>
+                          )}
+                          {user.isAdmin && (
+                            <button onClick={() => handleDelete(d)}
+                              style={{ fontSize: 10, padding: '3px 8px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: 5, cursor: 'pointer', fontFamily: 'var(--sora)', fontWeight: 600 }}>
+                              🗑 Delete
+                            </button>
                           )}
                         </div>
                       </td>
