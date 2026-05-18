@@ -3,16 +3,29 @@ import { useState, useRef } from 'react';
 import { getBranch, BRANCHES } from '../lib/data';
 import { BranchTag } from './App';
 
+const CATS = ['Policy', 'Protocol', 'SOP', 'Form', 'Checklist', 'Guideline', 'Competency'];
+
+function normDoc(d) {
+  return {
+    ...d,
+    branchId:    d.branch_id    ?? d.branchId    ?? 'all',
+    fileUrl:     d.file_url     ?? d.fileUrl     ?? null,
+    storagePath: d.storage_path ?? d.storagePath ?? null,
+  };
+}
+
 export default function Documents({ docs, setDocs, docAcks, setDocAcks, user, selBr, activeBranch }) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('All');
-  const [uploading, setUploading] = useState(false);
   const [uploadModal, setUploadModal] = useState(false);
-  const [newDoc, setNewDoc] = useState({ name: '', category: 'Policy', branchId: selBr === 'all' ? 'all' : selBr });
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [bulkCat, setBulkCat] = useState('Protocol');
+  const [bulkBranch, setBulkBranch] = useState(selBr === 'all' ? 'all' : selBr);
+  // fileList: Array of { file, name, status: 'pending'|'uploading'|'done'|'error', error }
+  const [fileList, setFileList] = useState([]);
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef();
 
-  const cats = ['All', 'Policy', 'Protocol', 'SOP', 'Form', 'Checklist', 'Guideline', 'Competency'];
+  const cats = ['All', ...CATS];
   const vis = docs.filter(d =>
     (d.branchId === 'all' || d.branchId === selBr || selBr === 'all') &&
     (cat === 'All' || d.category === cat) &&
@@ -43,40 +56,84 @@ export default function Documents({ docs, setDocs, docAcks, setDocAcks, user, se
     } catch { alert('Delete failed. Check your connection.'); }
   };
 
-  const handleUpload = async () => {
-    if (!newDoc.name.trim()) return alert('Please enter a document name.');
-    if (!selectedFile) return alert('Please select a file to upload.');
-    setUploading(true);
-    try {
-      const form = new FormData();
-      form.append('file', selectedFile);
-      form.append('name', newDoc.name);
-      form.append('branchId', newDoc.branchId);
-      form.append('category', newDoc.category);
-      const res = await fetch('/api/documents', { method: 'POST', body: form });
-      const json = await res.json();
-      if (json.document) {
-        // Reload all docs from DB so all users see the new doc
-        const r2 = await fetch('/api/documents');
-        if (r2.ok) {
-          const raw = await r2.json();
-          // Normalise snake_case DB columns to camelCase
-          setDocs(raw.map(d => ({
-            ...d,
-            branchId:    d.branch_id    ?? d.branchId    ?? 'all',
-            fileUrl:     d.file_url     ?? d.fileUrl     ?? null,
-            storagePath: d.storage_path ?? d.storagePath ?? null,
-          })));
-        }
-        setUploadModal(false);
-        setSelectedFile(null);
-        setNewDoc({ name: '', category: 'Policy', branchId: selBr === 'all' ? 'all' : selBr });
-      } else {
-        alert(json.error || 'Upload failed.');
-      }
-    } catch { alert('Upload failed. Check your connection.'); }
-    setUploading(false);
+  // File picker → add to list (deduplicate by name)
+  const onFilePick = (e) => {
+    const picked = Array.from(e.target.files || []);
+    setFileList(prev => {
+      const existing = new Set(prev.map(f => f.file.name));
+      const toAdd = picked.filter(f => !existing.has(f.name)).map(f => ({
+        file: f,
+        name: f.name.replace(/\.[^.]+$/, ''), // default name = filename without ext
+        status: 'pending',
+        error: null,
+      }));
+      return [...prev, ...toAdd];
+    });
+    e.target.value = ''; // reset so same files can be re-added after removal
   };
+
+  const removeFile = (idx) => setFileList(p => p.filter((_, i) => i !== idx));
+  const updateName = (idx, val) => setFileList(p => p.map((f, i) => i === idx ? { ...f, name: val } : f));
+
+  const handleUpload = async () => {
+    if (fileList.length === 0) return alert('Please select at least one file.');
+    const allNamed = fileList.every(f => f.name.trim());
+    if (!allNamed) return alert('Please give every file a name.');
+
+    setUploading(true);
+
+    // Upload sequentially, updating status per file
+    for (let i = 0; i < fileList.length; i++) {
+      setFileList(p => p.map((f, idx) => idx === i ? { ...f, status: 'uploading' } : f));
+      try {
+        const form = new FormData();
+        form.append('file', fileList[i].file);
+        form.append('name', fileList[i].name.trim());
+        form.append('branchId', bulkBranch);
+        form.append('category', bulkCat);
+        const res = await fetch('/api/documents', { method: 'POST', body: form });
+        const json = await res.json();
+        if (json.document) {
+          setFileList(p => p.map((f, idx) => idx === i ? { ...f, status: 'done' } : f));
+        } else {
+          setFileList(p => p.map((f, idx) => idx === i ? { ...f, status: 'error', error: json.error || 'Failed' } : f));
+        }
+      } catch (e) {
+        setFileList(p => p.map((f, idx) => idx === i ? { ...f, status: 'error', error: 'Network error' } : f));
+      }
+    }
+
+    // Reload full list from DB once all done
+    try {
+      const r = await fetch('/api/documents');
+      if (r.ok) setDocs((await r.json()).map(normDoc));
+    } catch { /* ignore */ }
+
+    setUploading(false);
+
+    // Auto-close if all succeeded
+    const allOk = fileList.every(f => f.status === 'done'); // fileList state may be stale here
+    // Use a small delay to let state settle
+    setTimeout(() => {
+      setFileList(prev => {
+        if (prev.every(f => f.status === 'done')) {
+          setUploadModal(false);
+          return [];
+        }
+        return prev; // keep open if some errors
+      });
+    }, 600);
+  };
+
+  const openModal = () => {
+    setFileList([]);
+    setBulkCat('Protocol');
+    setBulkBranch(selBr === 'all' ? 'all' : selBr);
+    setUploadModal(true);
+  };
+
+  const doneCount  = fileList.filter(f => f.status === 'done').length;
+  const errorCount = fileList.filter(f => f.status === 'error').length;
 
   return (
     <>
@@ -92,7 +149,7 @@ export default function Documents({ docs, setDocs, docAcks, setDocAcks, user, se
             <span style={{ color: 'var(--t3)' }}>🔍</span>
             <input placeholder="Search documents…" value={q} onChange={e => setQ(e.target.value)} />
           </div>
-          {user.isHOD && <button className="btn pri" onClick={() => setUploadModal(true)}>⬆ Upload Document</button>}
+          {user.isHOD && <button className="btn pri" onClick={openModal}>⬆ Upload Documents</button>}
         </div>
         <div className="fps">{cats.map(c => <div key={c} className={`pill ${cat === c ? 'act' : ''}`} onClick={() => setCat(c)}>{c}</div>)}</div>
 
@@ -145,37 +202,90 @@ export default function Documents({ docs, setDocs, docAcks, setDocAcks, user, se
       </div>
 
       {uploadModal && (
-        <div className="ov" onClick={() => setUploadModal(false)}>
-          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-            <div className="m-title">⬆ Upload Document</div>
-            <div className="m-sub">Add a new document to the library</div>
-            <div className="ig">
-              <label className="inplbl">Document Name</label>
-              <input className="inpf" value={newDoc.name} onChange={e => setNewDoc(p => ({ ...p, name: e.target.value }))} placeholder="e.g. ICU Ventilator Protocol 2026" />
+        <div className="ov" onClick={() => !uploading && setUploadModal(false)}>
+          <div className="modal" style={{ maxWidth: 540 }} onClick={e => e.stopPropagation()}>
+            <div className="m-title">⬆ Upload Documents</div>
+            <div className="m-sub">All selected files will share the same category &amp; scope</div>
+
+            {/* Shared settings */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9, marginBottom: 12 }}>
+              <div className="ig" style={{ margin: 0 }}>
+                <label className="inplbl">Category</label>
+                <select className="inpf" value={bulkCat} onChange={e => setBulkCat(e.target.value)} disabled={uploading}>
+                  {CATS.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="ig" style={{ margin: 0 }}>
+                <label className="inplbl">Scope</label>
+                <select className="inpf" value={bulkBranch} onChange={e => setBulkBranch(e.target.value)} disabled={uploading}>
+                  <option value="all">🌐 All Branches</option>
+                  {BRANCHES.map(b => <option key={b.id} value={b.id}>{b.full}</option>)}
+                </select>
+              </div>
             </div>
-            <div className="ig">
-              <label className="inplbl">Category</label>
-              <select className="inpf" value={newDoc.category} onChange={e => setNewDoc(p => ({ ...p, category: e.target.value }))}>
-                {['Policy', 'Protocol', 'SOP', 'Form', 'Checklist', 'Guideline', 'Competency'].map(c => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div className="ig">
-              <label className="inplbl">Scope</label>
-              <select className="inpf" value={newDoc.branchId} onChange={e => setNewDoc(p => ({ ...p, branchId: e.target.value }))}>
-                <option value="all">🌐 All Branches (Network)</option>
-                {BRANCHES.map(b => <option key={b.id} value={b.id}>{b.full}</option>)}
-              </select>
-            </div>
-            <div className="uz" onClick={() => fileRef.current?.click()} style={{ cursor: 'pointer' }}>
-              <input type="file" ref={fileRef} style={{ display: 'none' }} onChange={e => setSelectedFile(e.target.files[0])} accept=".pdf,.doc,.docx,.xlsx,.pptx,.txt" />
+
+            {/* Drop zone / file picker */}
+            <div className="uz" onClick={() => !uploading && fileRef.current?.click()} style={{ cursor: uploading ? 'default' : 'pointer', marginBottom: 10 }}>
+              <input type="file" ref={fileRef} style={{ display: 'none' }} multiple
+                accept=".pdf,.doc,.docx,.xlsx,.pptx,.txt"
+                onChange={onFilePick} />
               <div className="uz-ico">📎</div>
-              <div className="uz-t">{selectedFile ? selectedFile.name : 'Click or drag to attach file'}</div>
-              <div className="uz-s">PDF, Word, Excel, PowerPoint (optional)</div>
+              <div className="uz-t">{fileList.length > 0 ? `${fileList.length} file${fileList.length > 1 ? 's' : ''} selected — click to add more` : 'Click to select files'}</div>
+              <div className="uz-s">PDF, Word, Excel, PowerPoint · select multiple at once</div>
             </div>
-            <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end', marginTop: 8 }}>
-              <button className="btn out" onClick={() => setUploadModal(false)}>Cancel</button>
-              <button className="btn pri" onClick={handleUpload} disabled={uploading}>
-                {uploading ? <><span className="spin" /> Uploading…</> : '⬆ Upload'}
+
+            {/* File list */}
+            {fileList.length > 0 && (
+              <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                {fileList.map((f, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px',
+                    borderRadius: 7, border: '1px solid var(--bd)',
+                    background: f.status === 'done' ? '#f0fdf4' : f.status === 'error' ? '#fef2f2' : 'var(--sur2)',
+                  }}>
+                    <span style={{ fontSize: 13, flexShrink: 0 }}>
+                      {f.status === 'done' ? '✅' : f.status === 'error' ? '❌' : f.status === 'uploading' ? '⏳' : '📄'}
+                    </span>
+                    <input
+                      value={f.name}
+                      onChange={e => updateName(i, e.target.value)}
+                      disabled={uploading}
+                      placeholder="Document name"
+                      style={{
+                        flex: 1, fontSize: 11, padding: '3px 7px', border: '1px solid var(--bd)',
+                        borderRadius: 5, background: 'var(--bg)', color: 'var(--t)', fontFamily: 'var(--sora)',
+                        outline: 'none',
+                      }}
+                    />
+                    <span style={{ fontSize: 9.5, color: 'var(--t3)', flexShrink: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {(f.file.size / 1024) >= 1024
+                        ? `${(f.file.size / 1048576).toFixed(1)} MB`
+                        : `${Math.round(f.file.size / 1024)} KB`}
+                    </span>
+                    {f.status === 'error' && <span style={{ fontSize: 9, color: '#dc2626', flexShrink: 0 }}>{f.error}</span>}
+                    {!uploading && f.status !== 'done' && (
+                      <button onClick={() => removeFile(i)}
+                        style={{ fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', padding: '0 2px', flexShrink: 0 }}>✕</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Progress summary while uploading */}
+            {uploading && (
+              <div style={{ fontSize: 11, color: 'var(--t2)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span className="spin" />
+                Uploading {doneCount + errorCount + 1} of {fileList.length}…
+                {doneCount > 0 && <span style={{ color: '#166534' }}>✓ {doneCount} done</span>}
+                {errorCount > 0 && <span style={{ color: '#dc2626' }}>✕ {errorCount} failed</span>}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end' }}>
+              <button className="btn out" onClick={() => setUploadModal(false)} disabled={uploading}>Cancel</button>
+              <button className="btn pri" onClick={handleUpload} disabled={uploading || fileList.length === 0}>
+                {uploading ? <><span className="spin" /> Uploading…</> : `⬆ Upload ${fileList.length > 1 ? `${fileList.length} Files` : 'File'}`}
               </button>
             </div>
           </div>
