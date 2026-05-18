@@ -7,16 +7,20 @@ const TYPES = ['BLS', 'ACLS', 'PALS', 'NRP'];
 
 export default function Certificates({ certs, setCerts, selBr, activeBranch, staff, user }) {
   const [tab, setTab] = useState('certs');
-  const [addModal, setAddModal] = useState(null);
+  const [addModal, setAddModal] = useState(null); // staffId
   const [newCert, setNewCert] = useState({ type: 'BLS', expiryDate: '' });
+  const [certFile, setCertFile] = useState(null);
+  const [certUploading, setCertUploading] = useState(false);
   const [certErr, setCertErr] = useState('');
+  const certFileRef = useRef();
+
   // MOH upload
   const [mohUploading, setMohUploading] = useState(false);
   const [mohMsg, setMohMsg] = useState('');
   const [mohExpInput, setMohExpInput] = useState('');
   const mohFileRef = useRef();
 
-  // Staff see only their own row; HOD sees all branch staff (demo accounts excluded from HOD view)
+  // Staff see only their own row; HOD sees all branch staff (demo accounts excluded)
   const sl = staff
     ? user.isHOD
       ? staff.filter(s => (selBr === 'all' || s.branchId === selBr) && !s.isHOD && !s.isDemo)
@@ -33,19 +37,47 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
     const d = Math.ceil((new Date(expiry) - new Date()) / 86400000);
     return d < 0 ? 'expired' : d <= 90 ? 'expiring' : 'valid';
   };
-  const mohDays = (expiry) => expiry ? Math.ceil((new Date(expiry) - new Date()) / 86400000) : null;
-  const mohMissing = sl.filter(s => !s.mohLicenseUrl).length;
-  const mohExpired = sl.filter(s => s.mohLicenseExpiry && mohStatus(s.mohLicenseExpiry) === 'expired').length;
+  const mohDays   = (expiry) => expiry ? Math.ceil((new Date(expiry) - new Date()) / 86400000) : null;
+  const mohMissing  = sl.filter(s => !s.mohLicenseUrl).length;
+  const mohExpired  = sl.filter(s => s.mohLicenseExpiry && mohStatus(s.mohLicenseExpiry) === 'expired').length;
   const mohExpiring = sl.filter(s => s.mohLicenseExpiry && mohStatus(s.mohLicenseExpiry) === 'expiring').length;
 
-  const saveCert = () => {
-    if (!newCert.expiryDate) { setCertErr('Expiry date is required.'); return; }
-    setCerts(p => {
-      const filtered = p.filter(c => !(c.staffId === addModal && c.type === newCert.type));
-      return [...filtered, { id: Date.now(), staffId: addModal, type: newCert.type, expiryDate: newCert.expiryDate }];
-    });
-    setAddModal(null); setCertErr('');
+  const openCertModal = (staffId) => {
+    setAddModal(staffId);
     setNewCert({ type: 'BLS', expiryDate: '' });
+    setCertFile(null);
+    setCertErr('');
+  };
+
+  const saveCert = async () => {
+    if (!newCert.expiryDate) { setCertErr('Expiry date is required.'); return; }
+    if (!certFile) { setCertErr('Please upload the certificate file.'); return; }
+
+    setCertUploading(true); setCertErr('');
+    try {
+      // Upload the file first
+      const form = new FormData();
+      form.append('file', certFile);
+      form.append('folder', 'certificates');
+      const res = await fetch('/api/upload', { method: 'POST', body: form });
+      const json = await res.json();
+      if (!json.url) { setCertErr(json.error || 'File upload failed. Try again.'); setCertUploading(false); return; }
+
+      // Save cert record with file URL
+      setCerts(p => {
+        const filtered = p.filter(c => !(c.staffId === addModal && c.type === newCert.type));
+        return [...filtered, {
+          id: Date.now(),
+          staffId: addModal,
+          type: newCert.type,
+          expiryDate: newCert.expiryDate,
+          fileUrl: json.url,
+          fileName: certFile.name,
+        }];
+      });
+      setAddModal(null);
+    } catch { setCertErr('Upload failed. Check your connection.'); }
+    setCertUploading(false);
   };
 
   const uploadMohLicense = async (file) => {
@@ -62,9 +94,7 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: user.id, moh_license_url: json.url, moh_license_expiry: mohExpInput }),
         });
-        if (r.ok) {
-          setMohMsg('✓ MOH license uploaded. Reload the page to see updated status.');
-        } else setMohMsg('⚠ Upload succeeded but failed to save. Try again.');
+        setMohMsg(r.ok ? '✓ MOH license uploaded. Reload the page to see updated status.' : '⚠ Upload succeeded but failed to save. Try again.');
       } else setMohMsg('⚠ Upload failed. Try again.');
     } catch { setMohMsg('⚠ Error uploading. Check connection.'); }
     setMohUploading(false);
@@ -110,10 +140,21 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
         {/* ── Life Support Certs ── */}
         {tab === 'certs' && (
           <div className="card">
+            {!user.isHOD && (
+              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 11, color: '#1e40af' }}>
+                📋 Please keep your life support certificates up to date. Click <strong>+ Update</strong> next to your name to upload each certificate file and enter its expiry date.
+              </div>
+            )}
             <div className="tw">
               <table>
                 <thead>
-                  <tr><th>Staff</th><th>Branch</th><th>Role</th>{TYPES.map(t => <th key={t} style={{ textAlign: 'center' }}>{t}</th>)}<th></th></tr>
+                  <tr>
+                    <th>Staff</th>
+                    <th>Branch</th>
+                    <th>Role</th>
+                    {TYPES.map(t => <th key={t} style={{ textAlign: 'center' }}>{t}</th>)}
+                    <th></th>
+                  </tr>
                 </thead>
                 <tbody>
                   {sl.map(s => (
@@ -123,18 +164,33 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
                       <td style={{ fontSize: 10.5 }}>{s.role}</td>
                       {TYPES.map(t => {
                         const cert = gc(s.id, t);
-                        if (!cert) return <td key={t} style={{ textAlign: 'center' }}><span style={{ color: 'var(--t3)' }}>○</span></td>;
+                        if (!cert) return (
+                          <td key={t} style={{ textAlign: 'center' }}>
+                            <span style={{ fontSize: 9.5, color: 'var(--t3)' }}>—</span>
+                          </td>
+                        );
                         const st = certStatus(cert.expiryDate);
                         return (
                           <td key={t} style={{ textAlign: 'center' }}>
                             <span className={`b ${st}`}>{st === 'valid' ? '✓' : st === 'expiring' ? `${daysUntil(cert.expiryDate)}d` : '✗'} {t}</span>
                             <div style={{ fontSize: 8, color: 'var(--t3)', marginTop: 2 }}>{cert.expiryDate}</div>
+                            {cert.fileUrl && (
+                              <a href={cert.fileUrl} target="_blank" rel="noreferrer"
+                                style={{ fontSize: 8.5, color: 'var(--a)', textDecoration: 'none', display: 'block', marginTop: 2 }}>
+                                📎 View
+                              </a>
+                            )}
                           </td>
                         );
                       })}
-                      <td><button className="btn out sm" onClick={() => { setAddModal(s.id); setCertErr(''); }}>+ Update</button></td>
+                      <td>
+                        <button className="btn out sm" onClick={() => openCertModal(s.id)}>+ Update</button>
+                      </td>
                     </tr>
                   ))}
+                  {sl.length === 0 && (
+                    <tr><td colSpan={TYPES.length + 4} style={{ textAlign: 'center', color: 'var(--t3)', padding: 30 }}>No staff found</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -145,7 +201,6 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
         {tab === 'moh' && (
           <div className="card">
             {user.isHOD ? (
-              // HOD/Admin: table view of all staff
               <div className="tw">
                 <table>
                   <thead>
@@ -223,7 +278,6 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
                           <div style={{ fontSize: 11, color: '#9a3412', marginTop: 3 }}>Upload your MOH license PDF and expiry date below.</div>
                         </div>
                       )}
-                      {/* Upload form */}
                       <div style={{ background: 'var(--sur2)', borderRadius: 10, padding: '16px 18px', border: '1px solid var(--bd)' }}>
                         <div style={{ font: '600 11px var(--sora)', color: 'var(--t)', marginBottom: 12 }}>
                           {me.mohLicenseUrl ? '🔄 Update MOH License' : '⬆ Upload MOH License'}
@@ -263,27 +317,65 @@ export default function Certificates({ certs, setCerts, selBr, activeBranch, sta
         )}
       </div>
 
-      {/* Update cert modal */}
+      {/* ── Update / Upload Cert Modal ── */}
       {addModal && (
-        <div className="ov" onClick={() => setAddModal(null)}>
-          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div className="m-title">Update Certificate</div>
+        <div className="ov" onClick={() => !certUploading && setAddModal(null)}>
+          <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div className="m-title">🛡️ Upload Certificate</div>
             <div className="m-sub">{sl.find(s => s.id === addModal)?.name}</div>
+
             <div className="ig">
               <label className="inplbl">Certificate Type</label>
-              <select className="inpf" value={newCert.type} onChange={e => setNewCert(p => ({ ...p, type: e.target.value }))}>
+              <select className="inpf" value={newCert.type} onChange={e => setNewCert(p => ({ ...p, type: e.target.value }))} disabled={certUploading}>
                 {TYPES.map(t => <option key={t}>{t}</option>)}
               </select>
             </div>
+
             <div className="ig">
               <label className="inplbl">Expiry Date <span style={{ color: 'var(--dan)' }}>*</span></label>
               <input className="inpf" type="date" value={newCert.expiryDate}
-                onChange={e => { setNewCert(p => ({ ...p, expiryDate: e.target.value })); setCertErr(''); }} />
+                onChange={e => { setNewCert(p => ({ ...p, expiryDate: e.target.value })); setCertErr(''); }}
+                disabled={certUploading} />
             </div>
-            {certErr && <div style={{ fontSize: 11, color: '#991b1b', marginBottom: 8 }}>⚠ {certErr}</div>}
-            <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end' }}>
-              <button className="btn out" onClick={() => setAddModal(null)}>Cancel</button>
-              <button className="btn pri" onClick={saveCert}>Save Certificate</button>
+
+            <div className="ig">
+              <label className="inplbl">Certificate File (PDF/JPG) <span style={{ color: 'var(--dan)' }}>*</span></label>
+              <input type="file" ref={certFileRef} style={{ display: 'none' }}
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={e => { setCertFile(e.target.files[0] || null); setCertErr(''); }} />
+              <div
+                onClick={() => !certUploading && certFileRef.current?.click()}
+                style={{
+                  border: `2px dashed ${certFile ? 'var(--a)' : 'var(--bd)'}`,
+                  borderRadius: 8, padding: '12px 14px', cursor: 'pointer',
+                  background: certFile ? 'var(--a)08' : 'var(--sur2)',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}>
+                <span style={{ fontSize: 20 }}>{certFile ? '📎' : '⬆'}</span>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: certFile ? 'var(--a)' : 'var(--t2)' }}>
+                    {certFile ? certFile.name : 'Click to choose file'}
+                  </div>
+                  <div style={{ fontSize: 9.5, color: 'var(--t3)', marginTop: 2 }}>
+                    {certFile
+                      ? `${(certFile.size / 1024) >= 1024 ? (certFile.size / 1048576).toFixed(1) + ' MB' : Math.round(certFile.size / 1024) + ' KB'}`
+                      : 'PDF, JPG or PNG accepted'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {certErr && (
+              <div style={{ fontSize: 11, color: '#991b1b', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, padding: '7px 10px', marginBottom: 8 }}>
+                ⚠ {certErr}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button className="btn out" onClick={() => setAddModal(null)} disabled={certUploading}>Cancel</button>
+              <button className="btn pri" onClick={saveCert} disabled={certUploading}>
+                {certUploading ? <><span className="spin" /> Uploading…</> : '💾 Save Certificate'}
+              </button>
             </div>
           </div>
         </div>
